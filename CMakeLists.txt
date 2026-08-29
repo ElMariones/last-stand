@@ -57,6 +57,7 @@ add_library(laststand_core STATIC
     src/ai/FlowField.cpp
     src/sim/EnemyPool.cpp
     src/sim/MovementSystem.cpp
+    src/sim/Base.cpp
 )
 target_include_directories(laststand_core PUBLIC src)
 laststand_set_warnings(laststand_core)
@@ -79,6 +80,7 @@ add_executable(laststand_tests
     tests/test_flowfield.cpp
     tests/test_enemypool.cpp
     tests/test_movement.cpp
+    tests/test_base.cpp
 )
 target_link_libraries(laststand_tests PRIVATE laststand_core doctest::doctest)
 laststand_set_warnings(laststand_tests)
