@@ -25,10 +25,20 @@ public:
 
     void spawnWave(uint32_t count);
     void placeTurret(Vec2 position);   // appends a default Machine Gun
+    void setLevelTotal(uint32_t total) { levelTotal_ = total; }
     void tick(float dt);
 
-    bool     isOver() const { return base_.isDestroyed(); }
+    // A battle is over when the base falls (defeat) or the invasion is fully
+    // spent with no enemies left alive (victory). levelTotal_ (and thus
+    // victory) is only meaningful once setLevelTotal has been called.
+    bool     isDefeat() const { return base_.isDestroyed(); }
+    bool     isVictory() const {
+        return !isDefeat() && levelTotal_ > 0u && spawned_ >= levelTotal_ &&
+               enemies_.count() == 0u;
+    }
+    bool     isOver() const { return isDefeat() || isVictory(); }
     uint64_t ticks() const { return ticks_; }
+    uint32_t spawned() const { return spawned_; }
     uint32_t totalArrived() const { return totalArrived_; }
     uint64_t totalShots() const { return totalShots_; }
     uint32_t totalKills() const { return totalKills_; }
@@ -42,7 +52,9 @@ public:
     const EnemyPool& enemies() const { return enemies_; }
     EnemyPool&       enemies() { return enemies_; }
     const Base&      base() const { return base_; }
+    Base&            base() { return base_; }
     const std::vector<Turret>& turrets() const { return turrets_; }
+    std::vector<Turret>& turrets() { return turrets_; }
     const std::array<Tracer, kMaxTracers>& tracers() const { return tracers_; }
     uint32_t tracerCount() const { return tracerCount_; }
 
@@ -61,6 +73,8 @@ private:
     uint64_t        totalShots_   = 0u;
     uint32_t        totalArrived_ = 0u;
     uint32_t        totalKills_   = 0u;
+    uint32_t        spawned_      = 0u;
+    uint32_t        levelTotal_   = 0u;
 };
 
 }  // namespace ls

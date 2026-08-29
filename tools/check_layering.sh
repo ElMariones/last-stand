@@ -6,7 +6,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 violations=0
 
-for dir in sim math core ai; do
+for dir in sim math core ai gameplay persist; do
     target="$root/src/$dir"
     [ -d "$target" ] || continue
     if grep -rn -E '#include[[:space:]]*[<"](raylib\.h|render/|ui/)' "$target"; then
@@ -17,7 +17,7 @@ done
 
 if [ "$violations" -ne 0 ]; then
     echo "" >&2
-    echo "src/{sim,math,core,ai} must never include raylib, render/ or ui/." >&2
+    echo "src/{sim,math,core,ai,gameplay,persist} must never include raylib, render/ or ui/." >&2
     echo "See GDD 14.2. Move the rendering concern into src/render/." >&2
     exit 1
 fi

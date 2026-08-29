@@ -62,9 +62,15 @@ add_library(laststand_core STATIC
     src/sim/Targeting.cpp
     src/sim/CombatSystem.cpp
     src/sim/World.cpp
+    src/gameplay/Level.cpp
+    src/gameplay/SpawnDirector.cpp
+    src/gameplay/UpgradeTree.cpp
+    src/gameplay/Progression.cpp
+    src/persist/SaveGame.cpp
     src/render/Renderer.cpp
     src/app/Cli.cpp
     src/app/Bench.cpp
+    src/app/Session.cpp
 )
 target_include_directories(laststand_core PUBLIC src)
 laststand_set_warnings(laststand_core)
@@ -94,6 +100,12 @@ add_executable(laststand_tests
     tests/test_spatialhash.cpp
     tests/test_targeting.cpp
     tests/test_combat.cpp
+    tests/test_rect.cpp
+    tests/test_level.cpp
+    tests/test_spawndirector.cpp
+    tests/test_upgradetree.cpp
+    tests/test_progression.cpp
+    tests/test_savegame.cpp
 )
 target_link_libraries(laststand_tests PRIVATE laststand_core doctest::doctest)
 laststand_set_warnings(laststand_tests)

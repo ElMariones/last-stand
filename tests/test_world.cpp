@@ -72,3 +72,46 @@ TEST_CASE("stateHash changes as the world evolves") {
     for (int i = 0; i < 60; ++i) w.tick(1.0f / 60.0f);
     CHECK(w.stateHash() != a);
 }
+
+TEST_CASE("the world reports victory when the invasion is fully cleared") {
+    World w{ls::makeM1Map(), 7u};
+    w.placeTurret(w.map().baseCenter());
+    // An overwhelming turret: one shot kills, range covers the whole field.
+    w.turrets().back().range = 5000.0f;
+    w.turrets().back().damage = 10000.0f;
+
+    w.setLevelTotal(1u);
+    w.spawnWave(1u);
+
+    for (int i = 0; i < 600 && !w.isOver(); ++i) w.tick(1.0f / 60.0f);
+
+    CHECK(w.isVictory());
+    CHECK_FALSE(w.isDefeat());
+    CHECK(w.totalKills() == 1u);
+}
+
+TEST_CASE("the world reports defeat, not victory, when the base falls") {
+    World w{ls::makeM1Map(), 7u};
+    w.setLevelTotal(100u);
+    w.spawnWave(100u);
+
+    for (int i = 0; i < 5000 && !w.isOver(); ++i) w.tick(1.0f / 60.0f);
+
+    CHECK(w.isDefeat());
+    CHECK_FALSE(w.isVictory());
+}
+
+TEST_CASE("base regen heals toward max health and never overshoots") {
+    World w{ls::makeM1Map(), 7u};
+    w.base().health = 500.0f;             // simulate prior damage
+    w.base().regenPerSecond = 20.0f;
+
+    for (int i = 0; i < 60; ++i) w.tick(1.0f / 60.0f);   // 1 second
+
+    CHECK(w.base().health == doctest::Approx(520.0f).epsilon(0.001));
+
+    // Fast regen must clamp at maxHealth and never exceed it.
+    w.base().regenPerSecond = 100000.0f;
+    w.tick(1.0f / 60.0f);
+    CHECK(w.base().health == doctest::Approx(w.base().maxHealth));
+}

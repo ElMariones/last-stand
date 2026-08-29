@@ -5,20 +5,38 @@
 #include <cstdio>
 #include <vector>
 
+#include "gameplay/Level.h"
+#include "gameplay/SpawnDirector.h"
 #include "sim/World.h"
 
 namespace ls {
 
+namespace {
+
+// A synthetic level that emits everything at t=0: the benchmark wants to
+// measure steady-state per-tick cost at a given entity count, not the shape of
+// a real spawn curve. Victory sits far beyond the tick budget, so the run
+// measures peak-density ticks.
+Level makeBenchLevel(uint32_t count) {
+    Level level;
+    level.name = "bench";
+    level.schedule = {SpawnEvent{0.0f, count}};
+    level.totalEnemies = count;
+    level.map = makeM1Map();
+    return level;
+}
+
+}  // namespace
+
 BenchResult runBench(const Options& options) {
-    World world{makeM1Map(), options.seed};
-    // Place a Machine Gun on every hardpoint so the benchmark measures the
-    // full combat pipeline (spatial-hash build + target acquisition), not
-    // just movement and separation.
-    for (const Vec2& hp : world.map().hardpoints) world.placeTurret(hp);
-    world.spawnWave(options.spawn);
+    const Level level = makeBenchLevel(options.spawn);
+    World world{level.map, options.seed};
+    for (const Vec2& hp : level.map.hardpoints) world.placeTurret(hp);
+    world.setLevelTotal(level.totalEnemies);
+    SpawnDirector director;
 
     BenchResult r;
-    r.peakEntities = world.enemies().count();
+    r.peakEntities = 0u;
 
     std::vector<double> samples;
     samples.reserve(static_cast<size_t>(options.ticks));
@@ -26,10 +44,12 @@ BenchResult runBench(const Options& options) {
     const float dt = 1.0f / 60.0f;
     for (uint64_t i = 0; i < options.ticks; ++i) {
         const auto t0 = std::chrono::steady_clock::now();
+        director.update(world, level, dt);
         world.tick(dt);
         const auto t1 = std::chrono::steady_clock::now();
         samples.push_back(
             std::chrono::duration<double, std::milli>(t1 - t0).count());
+        r.peakEntities = std::max(r.peakEntities, world.enemies().count());
     }
 
     r.ticks = world.ticks();

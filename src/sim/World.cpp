@@ -43,6 +43,7 @@ void World::spawnWave(uint32_t count) {
         const Vec2 pos{centre.x + rng_.nextRange(-jitter, jitter),
                        centre.y + rng_.nextRange(-jitter, jitter)};
         if (enemies_.spawn(pos, 100.0f, 0u) == EnemyPool::kInvalid) return;
+        ++spawned_;
     }
 }
 
@@ -53,6 +54,11 @@ void World::placeTurret(Vec2 position) {
 
 void World::tick(float dt) {
     if (isOver()) return;
+
+    if (!base_.isDestroyed() && base_.regenPerSecond > 0.0f) {
+        base_.health += base_.regenPerSecond * dt;
+        if (base_.health > base_.maxHealth) base_.health = base_.maxHealth;
+    }
 
     updateMovement(enemies_, field_, dt, movement_);
 

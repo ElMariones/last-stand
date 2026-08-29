@@ -1,4 +1,6 @@
 #include <doctest/doctest.h>
+#include "gameplay/Level.h"
+#include "gameplay/SpawnDirector.h"
 #include "sim/World.h"
 
 using ls::World;
@@ -58,6 +60,23 @@ TEST_CASE("determinism holds with turrets placed") {
         w.placeTurret(w.map().hardpoints[1]);
         w.spawnWave(200u);
         for (int i = 0; i < 2000; ++i) w.tick(1.0f / 60.0f);
+        return w.stateHash();
+    };
+    CHECK(run() == run());
+}
+
+TEST_CASE("determinism holds when driven by a spawn director") {
+    const auto run = [] {
+        const ls::Level level = ls::makeLevel1();
+        World w{level.map, 42u};
+        for (const ls::Vec2& hp : level.map.hardpoints) w.placeTurret(hp);
+        w.setLevelTotal(level.totalEnemies);
+
+        ls::SpawnDirector director;
+        for (int i = 0; i < 3000; ++i) {
+            director.update(w, level, 1.0f / 60.0f);
+            w.tick(1.0f / 60.0f);
+        }
         return w.stateHash();
     };
     CHECK(run() == run());
