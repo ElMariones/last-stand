@@ -6,7 +6,7 @@ agents at 120 fps on a single core before reaching for threads.
 > *You don't need to survive forever. You just need to get stronger faster
 > than they do.*
 
-**Status:** Milestone 2 of 6 — combat (Machine Gun, spatial hash, targeting).
+**Status:** Milestone 3 of 6 — the loop (spawn curves, Scrap economy, upgrade tree, save, RETRY).
 
 ## Build
 
@@ -25,8 +25,15 @@ cmake --build build -j
 | `F` | toggle flow-field arrows |
 | `G` | toggle grid |
 | `T` | toggle turret range rings |
-| `SPACE` | spawn 100 more enemies |
-| `R` | reset |
+| `SPACE` / `ENTER` | start the battle (from Prepare) |
+| `R` | retry — restart the level immediately |
+| `U` | open the upgrade tree (from the report) |
+| `1`–`6` | buy a node (tree) |
+| `X` | respec all (tree) |
+
+The game state (Scrap, tree, level bests) persists to `laststand.save`. The
+core loop is: battle → report → upgrade → retry, with the retry path a single
+keypress from either the report or the tree.
 
 ## Benchmark
 
