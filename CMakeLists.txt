@@ -65,6 +65,7 @@ laststand_set_warnings(laststand)
 enable_testing()
 add_executable(laststand_tests
     tests/test_main.cpp
+    tests/test_vec2.cpp
 )
 target_link_libraries(laststand_tests PRIVATE laststand_core doctest::doctest)
 laststand_set_warnings(laststand_tests)
