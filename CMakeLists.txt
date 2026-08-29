@@ -59,6 +59,9 @@ add_library(laststand_core STATIC
     src/sim/MovementSystem.cpp
     src/sim/Base.cpp
     src/sim/World.cpp
+    src/render/Renderer.cpp
+    src/app/Cli.cpp
+    src/app/Bench.cpp
 )
 target_include_directories(laststand_core PUBLIC src)
 laststand_set_warnings(laststand_core)
@@ -83,8 +86,13 @@ add_executable(laststand_tests
     tests/test_movement.cpp
     tests/test_base.cpp
     tests/test_world.cpp
+    tests/test_cli.cpp
+    tests/test_determinism.cpp
 )
 target_link_libraries(laststand_tests PRIVATE laststand_core doctest::doctest)
 laststand_set_warnings(laststand_tests)
 
 add_test(NAME unit COMMAND laststand_tests)
+
+add_test(NAME layering
+         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_layering.sh)
