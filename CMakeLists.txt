@@ -54,6 +54,7 @@ add_library(laststand_core STATIC
     src/core/FixedTimestep.cpp
     src/sim/Grid.cpp
     src/sim/LevelMap.cpp
+    src/ai/FlowField.cpp
 )
 target_include_directories(laststand_core PUBLIC src)
 laststand_set_warnings(laststand_core)
@@ -73,6 +74,7 @@ add_executable(laststand_tests
     tests/test_fixedtimestep.cpp
     tests/test_grid.cpp
     tests/test_levelmap.cpp
+    tests/test_flowfield.cpp
 )
 target_link_libraries(laststand_tests PRIVATE laststand_core doctest::doctest)
 laststand_set_warnings(laststand_tests)
