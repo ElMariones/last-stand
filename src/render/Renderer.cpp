@@ -8,7 +8,6 @@ namespace ls {
 namespace {
 
 // Palette from GDD 12.1: cold player, warm world, sickly enemies.
-constexpr Color kBackground{12, 10, 10, 255};
 constexpr Color kWall{46, 38, 34, 255};
 constexpr Color kEnemy{168, 200, 120, 255};
 constexpr Color kBaseGood{150, 220, 255, 255};
@@ -26,6 +25,10 @@ inline Vector2 toRl(Vec2 v) { return Vector2{v.x, v.y}; }
 
 }  // namespace
 
+// Draws the world content only — it issues draw calls and does NOT own the
+// frame. BeginDrawing/ClearBackground/EndDrawing are the caller's job (main),
+// so this composes with the report/tree overlays without nested begin/end,
+// which is exactly what caused the flicker and frame-pacing jitter.
 void Renderer::draw(const World& world,
                     float alpha,
                     const DebugFlags& flags,
@@ -34,9 +37,6 @@ void Renderer::draw(const World& world,
     const LevelMap& map = world.map();
     const Grid&     grid = map.grid;
     const float     cs = grid.cellSize();
-
-    BeginDrawing();
-    ClearBackground(kBackground);
 
     // --- walls -------------------------------------------------------------
     for (int cy = 0; cy < grid.rows(); ++cy) {
@@ -144,14 +144,12 @@ void Renderer::draw(const World& world,
                   world.totalKills());
     DrawText(line, 12, 56, 18, kText);
 
-    DrawText("[F] flow [G] grid [T] range [SPACE] spawn 100 [R] reset",
+    DrawText("[F] flow [G] grid [T] range",
              12, 78, 16, Color{120, 130, 145, 255});
 
     if (world.isOver()) {
-        DrawText("BASE DESTROYED", 12, 104, 32, kBaseBad);
+        DrawText("BATTLE OVER", 12, 104, 32, kBaseBad);
     }
-
-    EndDrawing();
 }
 
 }  // namespace ls

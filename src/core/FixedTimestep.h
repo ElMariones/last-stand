@@ -12,6 +12,11 @@ public:
     // Feed the real elapsed frame time. Returns how many fixed ticks to run.
     int advance(double frameSeconds);
 
+    // Drops any pending fractional time (accumulator). Call when entering a
+    // fresh simulation (e.g. a new battle) so a long paused frame doesn't
+    // burst 15 ticks of catch-up and make the simulation lurch.
+    void reset() { accumulator_ = 0.0; }
+
     double   alpha() const;          // [0,1) progress toward the next tick
     double   tickSeconds() const { return tickSeconds_; }
     uint64_t totalTicks() const { return totalTicks_; }

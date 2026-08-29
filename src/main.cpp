@@ -107,6 +107,14 @@ int main(int argc, char** argv) {
     ls::Renderer renderer;
     ls::DebugFlags flags;
 
+    ls::Phase prevPhase = ls::Phase::Prepare;
+    double lastTickMs = 0.0;
+
+    // --shot: drive the sim at a fixed dt (no real frame time, so the capture
+    // is reproducible), render, screenshot, then exit.
+    const bool shotMode = options.shotTicks > 0u;
+    if (shotMode) session.startBattle();
+
     while (!WindowShouldClose()) {
         // --- input ----------------------------------------------------------
         if (IsKeyPressed(KEY_F)) flags.showFlowField = !flags.showFlowField;
@@ -145,12 +153,28 @@ int main(int argc, char** argv) {
         }
 
         // --- simulation ----------------------------------------------------
+        // Drop any stale accumulator when a battle begins, so a long pause or
+        // hitch on the previous frame can't burst a dozen catch-up ticks and
+        // make the opening of a battle lurch.
         if (session.phase() == ls::Phase::Battle) {
-            const int ticks = timestep.advance(static_cast<double>(GetFrameTime()));
-            for (int i = 0; i < ticks; ++i) {
-                session.updateBattle(static_cast<float>(timestep.tickSeconds()));
+            if (prevPhase != ls::Phase::Battle) timestep.reset();
+
+            const double frameSeconds =
+                shotMode ? timestep.tickSeconds()
+                         : static_cast<double>(GetFrameTime());
+            const int ticks = timestep.advance(frameSeconds);
+            if (ticks > 0) {
+                const auto t0 = std::chrono::steady_clock::now();
+                for (int i = 0; i < ticks; ++i) {
+                    session.updateBattle(static_cast<float>(timestep.tickSeconds()));
+                }
+                const auto t1 = std::chrono::steady_clock::now();
+                const double totalMs =
+                    std::chrono::duration<double, std::milli>(t1 - t0).count();
+                lastTickMs = totalMs / static_cast<double>(ticks);
             }
         }
+        prevPhase = session.phase();
 
         // --- render ---------------------------------------------------------
         BeginDrawing();
@@ -159,7 +183,8 @@ int main(int argc, char** argv) {
         if (session.world() != nullptr) {
             renderer.draw(*session.world(),
                           static_cast<float>(timestep.alpha()), flags,
-                          static_cast<double>(GetFrameTime()) * 1000.0, 0.0);
+                          static_cast<double>(GetFrameTime()) * 1000.0,
+                          lastTickMs);
         }
 
         const bool battlePhases = session.phase() == ls::Phase::Battle ||
@@ -180,6 +205,11 @@ int main(int argc, char** argv) {
         }
 
         EndDrawing();
+
+        if (shotMode && timestep.totalTicks() >= options.shotTicks) {
+            TakeScreenshot("shot.png");
+            break;
+        }
     }
 
     session.saveNow();
