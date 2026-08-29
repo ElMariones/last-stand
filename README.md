@@ -6,7 +6,7 @@ agents at 120 fps on a single core before reaching for threads.
 > *You don't need to survive forever. You just need to get stronger faster
 > than they do.*
 
-**Status:** Milestone 3 of 6 — the loop (spawn curves, Scrap economy, upgrade tree, save, RETRY).
+**Status:** Milestone 4 of 6 — content (Cannon, Flamethrower, Runner, Tank, Levels 2–3, 24-node tree, abilities, time controls).
 
 ## Build
 
@@ -22,18 +22,23 @@ cmake --build build -j
 
 | Key | Action |
 |---|---|
-| `F` | toggle flow-field arrows |
-| `G` | toggle grid |
-| `T` | toggle turret range rings |
-| `SPACE` / `ENTER` | start the battle (from Prepare) |
-| `R` | retry — restart the level immediately |
+| `F` / `G` / `T` | toggle flow-field / grid / range rings |
+| `1` `2` `3` | select level 1/2/3 (from Prepare) |
+| click | place the selected turret kind on a hardpoint (Prepare) |
+| `TAB` | cycle turret kind: Machine Gun → Cannon → Flamethrower |
+| `M` | cycle targeting mode (First → Closest → Strongest → Densest) |
+| `SPACE` / `ENTER` | start the battle |
+| `S` | cycle time scale 1× → 2× → 4× |
+| `A` | airstrike the densest lane (if unlocked) |
+| `O` | overcharge the turret under the cursor (if unlocked) |
+| `R` | retry — restart the level with the same loadout |
 | `U` | open the upgrade tree (from the report) |
-| `1`–`6` | buy a node (tree) |
+| `↑`/`↓` + `ENTER` | select and buy a node (tree) |
 | `X` | respec all (tree) |
 
-The game state (Scrap, tree, level bests) persists to `laststand.save`. The
-core loop is: battle → report → upgrade → retry, with the retry path a single
-keypress from either the report or the tree.
+The game state (Scrap, 24-node tree, per-level bests) persists to
+`laststand.save`. The core loop is: battle → report → upgrade → retry, with
+the retry path a single keypress from either the report or the tree.
 
 ## Benchmark
 
