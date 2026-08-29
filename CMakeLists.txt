@@ -58,6 +58,9 @@ add_library(laststand_core STATIC
     src/sim/EnemyPool.cpp
     src/sim/MovementSystem.cpp
     src/sim/Base.cpp
+    src/sim/SpatialHash.cpp
+    src/sim/Targeting.cpp
+    src/sim/CombatSystem.cpp
     src/sim/World.cpp
     src/render/Renderer.cpp
     src/app/Cli.cpp
@@ -88,6 +91,9 @@ add_executable(laststand_tests
     tests/test_world.cpp
     tests/test_cli.cpp
     tests/test_determinism.cpp
+    tests/test_spatialhash.cpp
+    tests/test_targeting.cpp
+    tests/test_combat.cpp
 )
 target_link_libraries(laststand_tests PRIVATE laststand_core doctest::doctest)
 laststand_set_warnings(laststand_tests)

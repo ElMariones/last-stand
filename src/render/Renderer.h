@@ -4,8 +4,9 @@
 namespace ls {
 
 struct DebugFlags {
-    bool showFlowField = false;
-    bool showGrid      = false;
+    bool showFlowField  = false;
+    bool showGrid       = false;
+    bool showTurretRange = false;
 };
 
 class Renderer {

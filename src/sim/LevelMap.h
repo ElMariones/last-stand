@@ -11,6 +11,7 @@ struct LevelMap {
     Grid                 grid{64, 36, 20.0f};
     std::vector<uint8_t> walkable;      // 1 = walkable, 0 = wall
     std::vector<int>     spawnCells;
+    std::vector<Vec2>    hardpoints;    // authored turret placement positions
     int                  baseCell = 0;
 
     bool isWalkable(int cx, int cy) const;

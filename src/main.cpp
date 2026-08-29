@@ -13,6 +13,9 @@ namespace {
 
 std::unique_ptr<ls::World> makeWorld(uint64_t seed, uint32_t spawn) {
     auto w = std::make_unique<ls::World>(ls::makeM1Map(), seed);
+    for (const ls::Vec2& hp : w->map().hardpoints) {
+        w->placeTurret(hp);
+    }
     w->spawnWave(spawn);
     return w;
 }
@@ -54,6 +57,7 @@ int main(int argc, char** argv) {
     while (!WindowShouldClose()) {
         if (IsKeyPressed(KEY_F)) flags.showFlowField = !flags.showFlowField;
         if (IsKeyPressed(KEY_G)) flags.showGrid = !flags.showGrid;
+        if (IsKeyPressed(KEY_T)) flags.showTurretRange = !flags.showTurretRange;
         if (IsKeyPressed(KEY_SPACE)) world->spawnWave(100u);
         if (IsKeyPressed(KEY_R)) world = makeWorld(options.seed, options.spawn);
 

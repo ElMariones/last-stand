@@ -11,6 +11,10 @@ namespace ls {
 
 BenchResult runBench(const Options& options) {
     World world{makeM1Map(), options.seed};
+    // Place a Machine Gun on every hardpoint so the benchmark measures the
+    // full combat pipeline (spatial-hash build + target acquisition), not
+    // just movement and separation.
+    for (const Vec2& hp : world.map().hardpoints) world.placeTurret(hp);
     world.spawnWave(options.spawn);
 
     BenchResult r;

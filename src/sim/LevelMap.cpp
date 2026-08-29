@@ -36,6 +36,13 @@ LevelMap makeM1Map() {
         m.spawnCells.push_back(m.grid.index(1, cy));
     }
 
+    // Four hardpoints forming a kill-box over the funnel behind the
+    // chokepoint, covering the approach to the base at (58,18).
+    m.hardpoints.push_back(m.grid.cellCenter(34, 12));
+    m.hardpoints.push_back(m.grid.cellCenter(34, 22));
+    m.hardpoints.push_back(m.grid.cellCenter(46, 10));
+    m.hardpoints.push_back(m.grid.cellCenter(46, 26));
+
     m.baseCell = m.grid.index(58, 18);
     return m;
 }

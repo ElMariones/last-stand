@@ -59,3 +59,14 @@ TEST_CASE("baseCenter matches the base cell centre") {
     CHECK(m.baseCenter().x == doctest::Approx(m.grid.cellCenter(58, 18).x));
     CHECK(m.baseCenter().y == doctest::Approx(m.grid.cellCenter(58, 18).y));
 }
+
+TEST_CASE("M1 map authors four hardpoints on the base side") {
+    const LevelMap m = ls::makeM1Map();
+    REQUIRE(m.hardpoints.size() == 4u);
+    for (const ls::Vec2& hp : m.hardpoints) {
+        int cx = -1, cy = -1;
+        REQUIRE(m.grid.worldToCell(hp, cx, cy));
+        CHECK(m.isWalkable(cx, cy));
+        CHECK(cx > 28);                 // past the chokepoint (wall ends x=28)
+    }
+}

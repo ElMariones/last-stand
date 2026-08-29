@@ -15,6 +15,12 @@ constexpr Color kBaseGood{150, 220, 255, 255};
 constexpr Color kBaseBad{255, 90, 70, 255};
 constexpr Color kText{200, 220, 240, 255};
 constexpr Color kFlow{70, 90, 110, 255};
+constexpr Color kTurret{150, 220, 255, 255};
+constexpr Color kHardpoint{90, 90, 96, 255};
+constexpr Color kRange{70, 130, 160, 110};
+constexpr Color kTracer{200, 235, 255, 255};
+
+constexpr float kTracerTtl = 0.08f;   // matches CombatSystem
 
 inline Vector2 toRl(Vec2 v) { return Vector2{v.x, v.y}; }
 
@@ -87,6 +93,30 @@ void Renderer::draw(const World& world,
                      kEnemy);
     }
 
+    // --- hardpoints (empty slots) ------------------------------------------
+    for (const Vec2& hp : map.hardpoints) {
+        DrawCircleLinesV(toRl(hp), 10.0f, kHardpoint);
+    }
+
+    // --- turrets and range rings -------------------------------------------
+    for (const ls::Turret& t : world.turrets()) {
+        if (flags.showTurretRange) {
+            DrawCircleLinesV(toRl(t.position), t.range, kRange);
+        }
+        DrawCircleV(toRl(t.position), 8.0f, kTurret);
+        DrawCircleLinesV(toRl(t.position), 8.0f, Color{255, 255, 255, 255});
+    }
+
+    // --- tracers (fading hitscan lines) ------------------------------------
+    for (uint32_t i = 0; i < world.tracerCount(); ++i) {
+        const Tracer& tr = world.tracers()[i];
+        const float a = (tr.ttl > 0.0f) ? (tr.ttl / kTracerTtl) : 0.0f;
+        const Color c{
+            kTracer.r, kTracer.g, kTracer.b,
+            static_cast<unsigned char>(a * 255.0f)};
+        DrawLineV(toRl(tr.from), toRl(tr.to), c);
+    }
+
     // --- base ---------------------------------------------------------------
     const Base& b = world.base();
     const float frac = (b.maxHealth > 0.0f) ? (b.health / b.maxHealth) : 0.0f;
@@ -108,11 +138,17 @@ void Renderer::draw(const World& world,
                   static_cast<unsigned long long>(world.ticks()));
     DrawText(line, 12, 34, 18, kText);
 
-    DrawText("[F] flow field   [G] grid   [SPACE] spawn 100   [R] reset",
-             12, 56, 16, Color{120, 130, 145, 255});
+    std::snprintf(line, sizeof(line), "turrets %zu    shots %llu    kills %u",
+                  world.turrets().size(),
+                  static_cast<unsigned long long>(world.totalShots()),
+                  world.totalKills());
+    DrawText(line, 12, 56, 18, kText);
+
+    DrawText("[F] flow [G] grid [T] range [SPACE] spawn 100 [R] reset",
+             12, 78, 16, Color{120, 130, 145, 255});
 
     if (world.isOver()) {
-        DrawText("BASE DESTROYED", 12, 84, 32, kBaseBad);
+        DrawText("BASE DESTROYED", 12, 104, 32, kBaseBad);
     }
 
     EndDrawing();

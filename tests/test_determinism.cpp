@@ -50,3 +50,15 @@ TEST_CASE("interleaving two worlds does not couple them") {
     }
     CHECK(a.stateHash() == b.stateHash());
 }
+
+TEST_CASE("determinism holds with turrets placed") {
+    const auto run = [] {
+        World w{ls::makeM1Map(), 99u};
+        w.placeTurret(w.map().hardpoints[0]);
+        w.placeTurret(w.map().hardpoints[1]);
+        w.spawnWave(200u);
+        for (int i = 0; i < 2000; ++i) w.tick(1.0f / 60.0f);
+        return w.stateHash();
+    };
+    CHECK(run() == run());
+}
