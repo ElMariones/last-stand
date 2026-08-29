@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdio>
+#include <string>
 #include <raylib.h>
 
 #include "app/Bench.h"
@@ -11,6 +12,26 @@
 namespace {
 
 const char* kSavePath = "laststand.save";
+
+const char* kNodeNames[ls::kNodeCount] = {
+    "Damage",         "Fire Rate",     "Range",          "Base HP",
+    "Base Regen",     "Economy",       "Splash",         "Burn",
+    "Cannon",         "Flamethrower",  "Extra Hardpoint","DENSEST",
+    "MG Overclock",   "MG Ricochet",   "MG Bullet Storm","Explosive Shells",
+    "Knockback",      "Cluster Shot",  "Lingering Flames","Ignite",
+    "Firestorm",      "Airstrike",     "Overcharge",     "Armor Piercing",
+};
+
+const char* kNodeDesc[ls::kNodeCount] = {
+    "+20% dmg/lv",    "+15% rate/lv",  "+12% range/lv", "+300 HP/lv",
+    "+2 HP/s/lv",     "+20% scrap/lv", "+15% splash/lv","+20% burn/lv",
+    "unlock Cannon",  "unlock Flame",  "+1 hardpoint",  "unlock DENSEST",
+    "MG 2x/0.7x",     "MG +1 bounce",  "MG 20th spread","splash +50%",
+    "knockback +150%","4 sub-blasts",  "burn lasts 2x", "burn spreads",
+    "burn 2x",        "unlock strike", "unlock overchg", "+50% vs Tank",
+};
+
+const char* kKindName[3] = {"Machine Gun", "Cannon", "Flamethrower"};
 
 void drawReport(const ls::Session& s) {
     const ls::Payout& p = s.payout();
@@ -48,38 +69,36 @@ void drawReport(const ls::Session& s) {
              Color{140, 150, 165, 255});
 }
 
-void drawTree(const ls::Session& s) {
-    static const char* kNames[ls::kNodeCount] = {
-        "Damage", "Fire Rate", "Range", "Base HP", "Base Regen", "Economy"};
-    static const char* kDesc[ls::kNodeCount] = {
-        "x1.20 dmg", "x1.15 rate", "x1.12 range",
-        "+300 HP", "+2 HP/s", "x1.20 scrap"};
-
-    const int x = 300;
-    int y = 100;
+void drawTree(const ls::Session& s, int selected) {
+    const int x = 260;
+    int y = 70;
     char line[256];
 
     std::snprintf(line, sizeof(line), "SCRAP  %u", s.scrap());
-    DrawText(line, x, y, 32, Color{255, 220, 120, 255});
-    y += 48;
+    DrawText(line, x, y, 30, Color{255, 220, 120, 255});
+    y += 40;
 
     for (size_t i = 0; i < ls::kNodeCount; ++i) {
         const auto node = static_cast<ls::NodeId>(i);
         const uint32_t lvl = s.tree().level(node);
         const uint32_t cost = s.tree().cost(node);
         const bool afford = s.tree().canAfford(node, s.scrap());
+        const bool oneShot = !ls::isRepeatable(node) && lvl > 0u;
+        const std::string lvlText =
+            oneShot ? "OWNED" : (lvl > 0u ? "Lv" + std::to_string(lvl) : "");
 
-        std::snprintf(line, sizeof(line), "[%d] %-11s Lv%u  %s  cost %u",
-                      static_cast<int>(i + 1), kNames[i], lvl, kDesc[i], cost);
-        DrawText(line, x, y, 20,
+        char buf[256];
+        std::snprintf(buf, sizeof(buf), "%s %-16s %-6s cost %-6u %s",
+                      (static_cast<int>(i) == selected) ? ">" : " ",
+                      kNodeNames[i], lvlText.c_str(), cost, kNodeDesc[i]);
+        DrawText(buf, x, y, 17,
                  afford ? Color{200, 230, 255, 255}
                         : Color{90, 95, 105, 255});
-        y += 26;
+        y += 22;
     }
 
-    y += 12;
-    DrawText("[X] respec all    [R] retry    [ESC] report", x, y, 18,
-             Color{140, 150, 165, 255});
+    DrawText("[UP]/[DOWN] select   [ENTER] buy   [X] respec   [R] retry   [ESC] report",
+             x, 680, 16, Color{140, 150, 165, 255});
 }
 
 }  // namespace
@@ -109,9 +128,8 @@ int main(int argc, char** argv) {
 
     ls::Phase prevPhase = ls::Phase::Prepare;
     double lastTickMs = 0.0;
+    int selectedNode = 0;
 
-    // --shot: drive the sim at a fixed dt (no real frame time, so the capture
-    // is reproducible), render, screenshot, then exit.
     const bool shotMode = options.shotTicks > 0u;
     if (shotMode) session.startBattle();
 
@@ -125,13 +143,24 @@ int main(int argc, char** argv) {
             case ls::Phase::Prepare:
                 if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                     const Vector2 m = GetMousePosition();
-                    session.toggleTurretAt(ls::Vec2{m.x, m.y}, 12.0f, 12.0f);
+                    session.setTurretAt(ls::Vec2{m.x, m.y}, 12.0f, 12.0f);
                 }
+                if (IsKeyPressed(KEY_TAB)) session.cycleKind();
+                if (IsKeyPressed(KEY_M)) session.cycleTargeting();
+                if (IsKeyPressed(KEY_ONE)) session.selectLevel(0);
+                if (IsKeyPressed(KEY_TWO)) session.selectLevel(1);
+                if (IsKeyPressed(KEY_THREE)) session.selectLevel(2);
                 if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER)) {
                     session.startBattle();
                 }
                 break;
             case ls::Phase::Battle:
+                if (IsKeyPressed(KEY_S)) session.cycleTimeScale();
+                if (IsKeyPressed(KEY_A)) session.fireAirstrike();
+                if (IsKeyPressed(KEY_O)) {
+                    const Vector2 m = GetMousePosition();
+                    session.overchargeAt(ls::Vec2{m.x, m.y});
+                }
                 break;
             case ls::Phase::Report:
                 if (IsKeyPressed(KEY_R)) session.retry();
@@ -139,29 +168,27 @@ int main(int argc, char** argv) {
                 if (IsKeyPressed(KEY_P)) session.backToPrepare();
                 break;
             case ls::Phase::Tree:
-                if (IsKeyPressed(KEY_R)) session.retry();
+                if (IsKeyPressed(KEY_UP)) selectedNode = (selectedNode + 23) % 24;
+                if (IsKeyPressed(KEY_DOWN)) selectedNode = (selectedNode + 1) % 24;
+                if (IsKeyPressed(KEY_ENTER)) {
+                    session.buy(static_cast<ls::NodeId>(selectedNode));
+                }
                 if (IsKeyPressed(KEY_X)) session.respec();
+                if (IsKeyPressed(KEY_R)) session.retry();
                 if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_ESCAPE)) {
                     session.backToReport();
-                }
-                for (int i = 0; i < static_cast<int>(ls::kNodeCount); ++i) {
-                    if (IsKeyPressed(KEY_ONE + i)) {
-                        session.buy(static_cast<ls::NodeId>(i));
-                    }
                 }
                 break;
         }
 
         // --- simulation ----------------------------------------------------
-        // Drop any stale accumulator when a battle begins, so a long pause or
-        // hitch on the previous frame can't burst a dozen catch-up ticks and
-        // make the opening of a battle lurch.
         if (session.phase() == ls::Phase::Battle) {
             if (prevPhase != ls::Phase::Battle) timestep.reset();
 
+            const double scale = static_cast<double>(session.timeScale());
             const double frameSeconds =
                 shotMode ? timestep.tickSeconds()
-                         : static_cast<double>(GetFrameTime());
+                         : static_cast<double>(GetFrameTime()) * scale;
             const int ticks = timestep.advance(frameSeconds);
             if (ticks > 0) {
                 const auto t0 = std::chrono::steady_clock::now();
@@ -189,19 +216,25 @@ int main(int argc, char** argv) {
 
         const bool battlePhases = session.phase() == ls::Phase::Battle ||
                                   session.phase() == ls::Phase::Prepare;
-        char hint[128];
-        std::snprintf(hint, sizeof(hint),
-                      "phase %d   scrap %u   best %u",
-                      static_cast<int>(session.phase()), session.scrap(),
-                      session.bestKills());
+        char hint[192];
+        if (battlePhases) {
+            std::snprintf(hint, sizeof(hint),
+                          "L%d %s  kind %s  speed %dx  scrap %u  best %u",
+                          session.levelIndex() + 1, session.level().name.c_str(),
+                          kKindName[static_cast<int>(session.selectedKind())],
+                          session.timeScale(), session.scrap(), session.bestKills());
+        } else {
+            std::snprintf(hint, sizeof(hint), "scrap %u   best %u",
+                          session.scrap(), session.bestKills());
+        }
         DrawText(hint, 12, 700, 16, Color{140, 150, 165, 255});
 
         if (!battlePhases) {
             const Vector2 s = {static_cast<float>(GetScreenWidth()),
                                static_cast<float>(GetScreenHeight())};
-            DrawRectangleV(Vector2{0, 0}, s, Color{12, 10, 10, 230});
+            DrawRectangleV(Vector2{0, 0}, s, Color{12, 10, 10, 235});
             if (session.phase() == ls::Phase::Report) drawReport(session);
-            else if (session.phase() == ls::Phase::Tree) drawTree(session);
+            else if (session.phase() == ls::Phase::Tree) drawTree(session, selectedNode);
         }
 
         EndDrawing();

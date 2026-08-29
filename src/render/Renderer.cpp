@@ -9,7 +9,6 @@ namespace {
 
 // Palette from GDD 12.1: cold player, warm world, sickly enemies.
 constexpr Color kWall{46, 38, 34, 255};
-constexpr Color kEnemy{168, 200, 120, 255};
 constexpr Color kBaseGood{150, 220, 255, 255};
 constexpr Color kBaseBad{255, 90, 70, 255};
 constexpr Color kText{200, 220, 240, 255};
@@ -22,6 +21,30 @@ constexpr Color kTracer{200, 235, 255, 255};
 constexpr float kTracerTtl = 0.08f;   // matches CombatSystem
 
 inline Vector2 toRl(Vec2 v) { return Vector2{v.x, v.y}; }
+
+inline Color lerpColor(Color a, Color b, float t) {
+    return Color{
+        static_cast<unsigned char>(a.r + (b.r - a.r) * t),
+        static_cast<unsigned char>(a.g + (b.g - a.g) * t),
+        static_cast<unsigned char>(a.b + (b.b - a.b) * t),
+        255};
+}
+
+// Enemy base colour by kind (sickly greens, with Tank a rusty bulk); burning
+// blends toward fire orange.
+Color enemyColor(uint8_t type, float burnDps, float burnTtl) {
+    Color base;
+    switch (static_cast<ls::EnemyType>(type)) {
+        case ls::EnemyType::Runner: base = Color{130, 210, 150, 255}; break;
+        case ls::EnemyType::Tank:   base = Color{200, 150, 90, 255};  break;
+        default:                    base = Color{168, 200, 120, 255}; break;
+    }
+    if (burnTtl > 0.0f && burnDps > 0.0f) {
+        const float f = (burnDps > 12.0f) ? 1.0f : burnDps / 12.0f;
+        base = lerpColor(base, Color{255, 120, 40, 255}, f);
+    }
+    return base;
+}
 
 }  // namespace
 
@@ -79,18 +102,20 @@ void Renderer::draw(const World& world,
     for (uint32_t i = 0; i < n; ++i) {
         const Vec2 p = lerp(e.prevPosition[i], e.position[i], alpha);
         const Vec2 fwd = normalized(e.velocity[i]);
-        // A degenerate (stationary) enemy still needs an orientation.
         const Vec2 dir = (lengthSq(fwd) > 0.0f) ? fwd : Vec2{1.0f, 0.0f};
         const Vec2 side{-dir.y, dir.x};
 
-        const Vec2 tip  = p + dir * 5.0f;
-        const Vec2 back = p - dir * 3.0f;
+        // Tanks read as physically bigger in the crowd.
+        const float scale =
+            (e.type[i] == static_cast<uint8_t>(ls::EnemyType::Tank)) ? 1.7f : 1.0f;
+        const Vec2 tip  = p + dir * 5.0f * scale;
+        const Vec2 back = p - dir * 3.0f * scale;
+        const Vec2 hw   = side * 3.0f * scale;
+
         // If the triangles render invisible, raylib has culled them for
         // winding order — swap the last two vertices.
-        DrawTriangle(toRl(tip),
-                     toRl(back - side * 3.0f),
-                     toRl(back + side * 3.0f),
-                     kEnemy);
+        DrawTriangle(toRl(tip), toRl(back - hw), toRl(back + hw),
+                     enemyColor(e.type[i], e.burnDps[i], e.burnTtl[i]));
     }
 
     // --- hardpoints (empty slots) ------------------------------------------
@@ -103,8 +128,32 @@ void Renderer::draw(const World& world,
         if (flags.showTurretRange) {
             DrawCircleLinesV(toRl(t.position), t.range, kRange);
         }
-        DrawCircleV(toRl(t.position), 8.0f, kTurret);
-        DrawCircleLinesV(toRl(t.position), 8.0f, Color{255, 255, 255, 255});
+        switch (t.kind) {
+            case ls::TurretKind::MachineGun:
+                DrawCircleV(toRl(t.position), 8.0f, kTurret);
+                DrawCircleLinesV(toRl(t.position), 8.0f, Color{255, 255, 255, 255});
+                break;
+            case ls::TurretKind::Cannon: {
+                const Rectangle r{t.position.x - 10.0f, t.position.y - 10.0f,
+                                  20.0f, 20.0f};
+                DrawRectangleV(Vector2{r.x, r.y}, Vector2{r.width, r.height},
+                               Color{120, 160, 200, 255});
+                DrawRectangleLinesEx(r, 2.0f, Color{255, 255, 255, 255});
+                break;
+            }
+            case ls::TurretKind::Flamethrower: {
+                const Vec2 r{10.0f, 0.0f};
+                const Vec2 u{0.0f, 8.0f};
+                DrawTriangle(toRl(t.position + r), toRl(t.position - r + u),
+                             toRl(t.position - r - u), Color{255, 150, 60, 255});
+                break;
+            }
+        }
+        if (t.overchargeTtl > 0.0f) {
+            DrawCircleLinesV(toRl(t.position), 13.0f, Color{255, 240, 120, 255});
+        } else if (t.overheatTtl > 0.0f) {
+            DrawCircleLinesV(toRl(t.position), 13.0f, Color{255, 70, 50, 255});
+        }
     }
 
     // --- tracers (fading hitscan lines) ------------------------------------

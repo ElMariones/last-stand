@@ -1,15 +1,18 @@
 #include <doctest/doctest.h>
 #include "sim/Base.h"
 #include "sim/EnemyPool.h"
+#include "sim/EnemyType.h"
 
 using ls::Base;
 using ls::EnemyPool;
+using ls::EnemyType;
 using ls::Vec2;
 
 TEST_CASE("an enemy inside the radius damages the base and despawns") {
     Base b{Vec2{100.0f, 100.0f}, 30.0f, 1000.0f, 1000.0f};
     EnemyPool p;
-    p.spawn(Vec2{110.0f, 100.0f}, 250.0f, 0u);
+    p.spawn(Vec2{110.0f, 100.0f}, EnemyType::Grunt);
+    p.health[0] = 250.0f;
 
     CHECK(ls::applyArrivals(p, b) == 1u);
     CHECK(b.health == doctest::Approx(750.0f));
@@ -19,7 +22,8 @@ TEST_CASE("an enemy inside the radius damages the base and despawns") {
 TEST_CASE("an enemy outside the radius is untouched") {
     Base b{Vec2{100.0f, 100.0f}, 30.0f, 1000.0f, 1000.0f};
     EnemyPool p;
-    p.spawn(Vec2{200.0f, 100.0f}, 250.0f, 0u);
+    p.spawn(Vec2{200.0f, 100.0f}, EnemyType::Grunt);
+    p.health[0] = 250.0f;
 
     CHECK(ls::applyArrivals(p, b) == 0u);
     CHECK(b.health == doctest::Approx(1000.0f));
@@ -29,7 +33,7 @@ TEST_CASE("an enemy outside the radius is untouched") {
 TEST_CASE("damage scales with the arriving enemy's remaining health") {
     Base b{Vec2{0.0f, 0.0f}, 30.0f, 5000.0f, 5000.0f};
     EnemyPool p;
-    p.spawn(Vec2{0.0f, 0.0f}, 2000.0f, 2u);
+    p.spawn(Vec2{0.0f, 0.0f}, EnemyType::Tank);   // 2000 hp
 
     ls::applyArrivals(p, b);
     CHECK(b.health == doctest::Approx(3000.0f));
@@ -38,7 +42,7 @@ TEST_CASE("damage scales with the arriving enemy's remaining health") {
 TEST_CASE("multiple simultaneous arrivals are all processed") {
     Base b{Vec2{0.0f, 0.0f}, 50.0f, 1000.0f, 1000.0f};
     EnemyPool p;
-    for (int i = 0; i < 5; ++i) p.spawn(Vec2{0.0f, 0.0f}, 100.0f, 0u);
+    for (int i = 0; i < 5; ++i) p.spawn(Vec2{0.0f, 0.0f}, EnemyType::Grunt);
 
     CHECK(ls::applyArrivals(p, b) == 5u);
     CHECK(p.count() == 0u);
@@ -48,10 +52,10 @@ TEST_CASE("multiple simultaneous arrivals are all processed") {
 TEST_CASE("mixed arrivals leave the distant enemies alive") {
     Base b{Vec2{0.0f, 0.0f}, 50.0f, 1000.0f, 1000.0f};
     EnemyPool p;
-    p.spawn(Vec2{0.0f, 0.0f},     100.0f, 0u);
-    p.spawn(Vec2{500.0f, 0.0f},   100.0f, 0u);
-    p.spawn(Vec2{10.0f, 10.0f},   100.0f, 0u);
-    p.spawn(Vec2{600.0f, 0.0f},   100.0f, 0u);
+    p.spawn(Vec2{0.0f, 0.0f},    EnemyType::Grunt);   // arrives
+    p.spawn(Vec2{500.0f, 0.0f},  EnemyType::Grunt);   // far
+    p.spawn(Vec2{10.0f, 10.0f},  EnemyType::Grunt);   // arrives
+    p.spawn(Vec2{600.0f, 0.0f},  EnemyType::Grunt);   // far
 
     CHECK(ls::applyArrivals(p, b) == 2u);
     CHECK(p.count() == 2u);
@@ -63,7 +67,8 @@ TEST_CASE("mixed arrivals leave the distant enemies alive") {
 TEST_CASE("health floors at zero and the base reports destroyed") {
     Base b{Vec2{0.0f, 0.0f}, 30.0f, 100.0f, 100.0f};
     EnemyPool p;
-    p.spawn(Vec2{0.0f, 0.0f}, 5000.0f, 0u);
+    p.spawn(Vec2{0.0f, 0.0f}, EnemyType::Grunt);
+    p.health[0] = 5000.0f;
 
     ls::applyArrivals(p, b);
     CHECK(b.health == doctest::Approx(0.0f));

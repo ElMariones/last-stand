@@ -35,3 +35,34 @@ TEST_CASE("economy constants are non-negative and sane") {
     CHECK(lvl.killValue > 0.0f);
     CHECK(lvl.depthBonusWeight > 0.0f);
 }
+
+TEST_CASE("Level 2 totals 250 and includes Runners") {
+    const Level lvl = ls::makeLevel2();
+    CHECK(lvl.name == "Refinery Gate");
+    CHECK(lvl.recommendedPower == 25u);
+    CHECK(lvl.totalEnemies == 250u);
+
+    uint32_t sum = 0u;
+    bool hasRunner = false;
+    for (const auto& e : lvl.schedule) {
+        sum += e.count;
+        if (e.type == ls::EnemyType::Runner) hasRunner = true;
+    }
+    CHECK(sum == lvl.totalEnemies);
+    CHECK(hasRunner);
+}
+
+TEST_CASE("Level 3 totals 600 and includes Tanks and Runners") {
+    const Level lvl = ls::makeLevel3();
+    CHECK(lvl.name == "The Narrows");
+    CHECK(lvl.totalEnemies == 600u);
+
+    bool hasRunner = false;
+    bool hasTank = false;
+    for (const auto& e : lvl.schedule) {
+        if (e.type == ls::EnemyType::Runner) hasRunner = true;
+        if (e.type == ls::EnemyType::Tank) hasTank = true;
+    }
+    CHECK(hasRunner);
+    CHECK(hasTank);
+}

@@ -3,14 +3,16 @@
 #include <string>
 #include <vector>
 
+#include "sim/EnemyType.h"
 #include "sim/LevelMap.h"
 
 namespace ls {
 
-// A spawn burst: `count` enemies emitted at `timeSeconds` into the battle.
+// A spawn burst: `count` enemies of `type` emitted at `timeSeconds`.
 struct SpawnEvent {
-    float    timeSeconds = 0.0f;
-    uint32_t count       = 0u;
+    float     timeSeconds = 0.0f;
+    uint32_t  count       = 0u;
+    EnemyType type        = EnemyType::Grunt;
 };
 
 // A fixed, finite, deterministic invasion (GDD 4.1). The schedule is authored
@@ -30,5 +32,11 @@ struct Level {
 // then a thinning tail (troughs to breathe, GDD 4.1). Machine-gun turrets on
 // the four authored hardpoints are the only defense.
 Level makeLevel1();
+
+// Level 2 "Refinery Gate" — 250 enemies, Grunt + Runner mix (GDD 9.1).
+Level makeLevel2();
+
+// Level 3 "The Narrows" — 600 enemies, Grunt + Runner + Tank (GDD 9.1).
+Level makeLevel3();
 
 }  // namespace ls

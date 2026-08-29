@@ -58,6 +58,7 @@ add_library(laststand_core STATIC
     src/sim/EnemyPool.cpp
     src/sim/MovementSystem.cpp
     src/sim/Base.cpp
+    src/sim/EnemyType.cpp
     src/sim/SpatialHash.cpp
     src/sim/Targeting.cpp
     src/sim/CombatSystem.cpp
@@ -101,6 +102,7 @@ add_executable(laststand_tests
     tests/test_targeting.cpp
     tests/test_combat.cpp
     tests/test_rect.cpp
+    tests/test_enemytype.cpp
     tests/test_level.cpp
     tests/test_spawndirector.cpp
     tests/test_upgradetree.cpp

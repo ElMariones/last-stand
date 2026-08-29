@@ -5,7 +5,8 @@
 namespace ls {
 
 struct MovementParams {
-    float speed              = 40.0f;   // world units per second
+    // Per-enemy speed lives in EnemyPool::speed (it varies by type); the flow
+    // sample is scaled by that, not by a single global number.
     float separationRadius   = 12.0f;
     float separationStrength = 50.0f;
 };

@@ -20,7 +20,7 @@ void updateMovement(EnemyPool& pool,
 
     for (uint32_t i = 0; i < n; ++i) {
         const Vec2 flow = field.sample(pool.position[i]);
-        const Vec2 desired = flow * params.speed;
+        const Vec2 desired = flow * pool.speed[i];
 
         // ------------------------------------------------------------------
         // STAGE 0 (GDD 15): O(n^2) separation. DELIBERATELY UNOPTIMISED.

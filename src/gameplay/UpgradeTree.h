@@ -4,39 +4,90 @@
 
 namespace ls {
 
-enum class NodeId : uint8_t { Damage, FireRate, Range, BaseHp, BaseRegen, Economy };
-constexpr size_t kNodeCount = 6u;
+// 24 nodes: eight repeatable stat nodes + sixteen one-shot behaviour/unlock
+// nodes (the transformation lines and abilities). See docs/GDD.md 7 and the
+// M4 plan. Order is significant only for serialization (persist/SaveGame).
+enum class NodeId : uint8_t {
+    Damage = 0,
+    FireRate,
+    Range,
+    BaseHp,
+    BaseRegen,
+    Economy,
+    Splash,
+    Burn,
+    UnlockCannon,
+    UnlockFlamethrower,
+    ExtraHardpoint,
+    TargetingDensest,
+    MGOverclock,
+    MGRicochet,
+    MGBulletStorm,
+    CannonExplosive,
+    CannonKnockback,
+    CannonCluster,
+    FlameLingering,
+    FlameIgnite,
+    FlameFirestorm,
+    AbilityAirstrike,
+    AbilityOvercharge,
+    ArmorPiercing,
+};
+
+constexpr size_t kNodeCount = 24u;
 
 // The folded effect of every purchased node, ready to be applied to a fresh
 // battle's turrets and base. Multiplicative factors start at 1; additive
-// bonuses start at 0.
-struct Bonuses {
+// bonuses start at 0; booleans are false until their one-shot node is owned.
+struct Effects {
     float damageMult   = 1.0f;
     float fireRateMult = 1.0f;
     float rangeMult    = 1.0f;
+    float splashMult   = 1.0f;
+    float burnMult     = 1.0f;
+    float scrapMult    = 1.0f;
     float baseBonusHp  = 0.0f;
     float baseRegen    = 0.0f;
-    float scrapMult    = 1.0f;
+
+    bool unlockCannon     = false;
+    bool unlockFlamethrower = false;
+    bool extraHardpoint   = false;
+    bool densest          = false;
+
+    bool mgOverclock      = false;
+    bool mgRicochet       = false;
+    bool mgBulletStorm    = false;
+
+    bool cannonExplosive  = false;
+    bool cannonKnockback  = false;
+    bool cannonCluster    = false;
+
+    bool flameLingering   = false;
+    bool flameIgnite      = false;
+    bool flameFirestorm   = false;
+
+    bool airstrike        = false;
+    bool overcharge       = false;
+    bool armorPiercing    = false;
 };
 
-// Persistent, branching-free upgrade tree (GDD 7). M3 ships six repeatable
-// stat nodes to prove the loop; behaviour-changing nodes are M4. Cost follows
-// cost(n) = base * 1.35^n where n is the node's current level (GDD 7.2).
-// Respec is free and refunds 100% (GDD 7.4).
+bool isRepeatable(NodeId node);
+
 class UpgradeTree {
 public:
     uint32_t level(NodeId node) const;
     uint32_t cost(NodeId node) const;               // price of the NEXT level
     bool     canAfford(NodeId node, uint32_t scrap) const;
     bool     purchase(NodeId node, uint32_t& scrap);
+    bool     has(NodeId node) const {
+        return levels_[static_cast<size_t>(node)] > 0u;
+    }
     void     respecAll(uint32_t& scrap);
     uint32_t totalSpent() const { return totalSpent_; }
 
-    // Restores levels from a save and recomputes totalSpent (so a load can
-    // reproduce the wallet exactly without re-running purchases).
     void loadLevels(const std::array<uint32_t, kNodeCount>& levels);
 
-    Bonuses bonuses() const;
+    Effects bonuses() const;
 
     const std::array<uint32_t, kNodeCount>& levels() const { return levels_; }
 

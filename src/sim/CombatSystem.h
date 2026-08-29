@@ -18,16 +18,22 @@ struct Tracer {
     float ttl = 0.0f;   // seconds of life remaining
 };
 
-// Advances every turret's cooldown; when one crosses zero, acquire a target
-// through the spatial hash, resolve hitscan damage, and append a tracer.
-// Kills are DEFERRED: a killed enemy is left at health 0 in place and removed
-// by cullDead() after every turret has fired, so the spatial hash stays
-// coherent for the whole turret loop (swap-removing mid-loop would invalidate
-// every subsequent query's indices).
+// Advances every turret's cooldown (and ability timers), acquires a target
+// through the spatial hash, and resolves the shot according to the turret's
+// kind: instant single-target hitscan (Machine Gun), splash + knockback
+// (Cannon), or cone-applied Burn (Flamethrower). Kills are DEFERRED: a
+// killed enemy is left at health 0 and removed by cullDead() after every
+// turret has fired, so the spatial hash stays coherent for the whole loop.
 void updateCombat(std::vector<Turret>& turrets, EnemyPool& enemies,
                   const SpatialHash& hash, Vec2 basePos, float dt,
                   std::array<Tracer, kMaxTracers>& tracers,
                   uint32_t& tracerCount);
+
+// Applies Burn damage-over-time and, when `ignite` is set (Flamethrower's
+// Ignite node), spreads burn to nearby enemies. Runs once per tick after all
+// turrets have fired.
+void applyBurn(EnemyPool& enemies, const SpatialHash& hash, float dt,
+               bool ignite);
 
 // Swap-removes every enemy with health <= 0. Returns how many were culled.
 uint32_t cullDead(EnemyPool& enemies);

@@ -9,19 +9,26 @@ EnemyPool::EnemyPool() {
     velocity.resize(cap);
     health.resize(cap, 0.0f);
     type.resize(cap, 0u);
+    speed.resize(cap, 0.0f);
+    burnDps.resize(cap, 0.0f);
+    burnTtl.resize(cap, 0.0f);
 }
 
-uint32_t EnemyPool::spawn(Vec2 pos, float hp, uint8_t enemyType) {
+uint32_t EnemyPool::spawn(Vec2 pos, EnemyType enemyType) {
     if (count_ >= kCapacity) return kInvalid;
 
+    const EnemyStats& stats = statsFor(enemyType);
     const uint32_t i = count_++;
     const size_t   s = static_cast<size_t>(i);
 
     position[s]     = pos;
     prevPosition[s] = pos;          // so the first interpolated frame is stable
     velocity[s]     = Vec2{0.0f, 0.0f};
-    health[s]       = hp;
-    type[s]         = enemyType;
+    health[s]       = stats.hp;
+    type[s]         = static_cast<uint8_t>(enemyType);
+    speed[s]        = stats.speed;
+    burnDps[s]      = 0.0f;
+    burnTtl[s]      = 0.0f;
     return i;
 }
 
@@ -37,6 +44,9 @@ void EnemyPool::kill(uint32_t i) {
         velocity[d]     = velocity[l];
         health[d]       = health[l];
         type[d]         = type[l];
+        speed[d]        = speed[l];
+        burnDps[d]      = burnDps[l];
+        burnTtl[d]      = burnTtl[l];
     }
     count_ = last;
 }

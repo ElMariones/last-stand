@@ -6,7 +6,8 @@ void SpawnDirector::update(World& world, const Level& level, float dt) {
     clock_ += dt;
     while (cursor_ < level.schedule.size() &&
            level.schedule[cursor_].timeSeconds <= clock_) {
-        world.spawnWave(level.schedule[cursor_].count);
+        world.spawnWave(level.schedule[cursor_].count,
+                        level.schedule[cursor_].type);
         ++cursor_;
     }
 }

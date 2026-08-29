@@ -31,7 +31,7 @@ World::World(LevelMap levelMap, uint64_t seed)
     base_.radius = map_.grid.cellSize() * 1.5f;
 }
 
-void World::spawnWave(uint32_t count) {
+void World::spawnWave(uint32_t count, EnemyType type) {
     if (map_.spawnCells.empty()) return;
 
     const float jitter = map_.grid.cellSize() * 0.4f;
@@ -42,7 +42,7 @@ void World::spawnWave(uint32_t count) {
             map_.grid.cellCenterAt(map_.spawnCells[static_cast<size_t>(pick)]);
         const Vec2 pos{centre.x + rng_.nextRange(-jitter, jitter),
                        centre.y + rng_.nextRange(-jitter, jitter)};
-        if (enemies_.spawn(pos, 100.0f, 0u) == EnemyPool::kInvalid) return;
+        if (enemies_.spawn(pos, type) == EnemyPool::kInvalid) return;
         ++spawned_;
     }
 }
@@ -50,6 +50,10 @@ void World::spawnWave(uint32_t count) {
 void World::placeTurret(Vec2 position) {
     turrets_.push_back(Turret{});   // allocation happens in Prepare, never in-tick
     turrets_.back().position = position;
+}
+
+void World::addTracer(Vec2 from, Vec2 to, float ttl) {
+    appendTracer(tracers_, tracerCount_, from, to, ttl);
 }
 
 void World::tick(float dt) {
@@ -74,6 +78,11 @@ void World::tick(float dt) {
 
     updateCombat(turrets_, enemies_, hash_, base_.position, dt, tracers_,
                  tracerCount_);
+
+    bool anyIgnite = false;
+    for (const Turret& t : turrets_) anyIgnite = anyIgnite || t.ignite;
+    applyBurn(enemies_, hash_, dt, anyIgnite);
+
     totalKills_ += cullDead(enemies_);
 
     uint64_t shots = 0u;
@@ -91,6 +100,7 @@ uint64_t World::stateHash() const {
         hashFloat(h, enemies_.position[i].x);
         hashFloat(h, enemies_.position[i].y);
         hashFloat(h, enemies_.health[i]);
+        hashFloat(h, enemies_.burnDps[i]);
     }
     for (const Turret& t : turrets_) {
         hashFloat(h, t.cooldown);

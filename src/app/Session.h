@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "gameplay/Level.h"
 #include "gameplay/Progression.h"
@@ -27,16 +28,32 @@ public:
     Phase    phase() const { return phase_; }
     uint32_t scrap() const { return scrap_; }
     const UpgradeTree& tree() const { return tree_; }
-    const Level&     level() const { return level_; }
-    const World*     world() const { return world_.get(); }
+    const Level& level() const { return level_; }
+    int   levelIndex() const { return levelIndex_; }
+    const World* world() const { return world_.get(); }
 
-    bool     hasResult() const { return hasResult_; }
+    bool hasResult() const { return hasResult_; }
     const BattleResult& result() const { return result_; }
     const Payout&       payout() const { return payout_; }
 
-    // Early-game turret placement (Prepare): toggle a turret at the hardpoint
-    // nearest `worldPos` within `halfW`×`halfH`, if any. Returns true on a hit.
-    bool toggleTurretAt(Vec2 worldPos, float halfW, float halfH);
+    // Level select (0..2).
+    void selectLevel(int idx);
+
+    // Prepare: turret placement and targeting.
+    TurretKind selectedKind() const { return selectedKind_; }
+    void cycleKind();
+    void cycleTargeting();
+    void setTurretAt(Vec2 worldPos, float halfW, float halfH);
+
+    // Time controls (1x/2x/4x).
+    int  timeScale() const { return timeScale_; }
+    void cycleTimeScale();
+
+    // Abilities.
+    bool airstrikeReady() const { return effects_.airstrike && airstrikeCd_ <= 0.0f; }
+    bool overchargeReady() const { return effects_.overcharge && overchargeCd_ <= 0.0f; }
+    void fireAirstrike();
+    void overchargeAt(Vec2 worldPos);
 
     void startBattle();            // Prepare -> Battle
     void updateBattle(float dt);   // ticks battle; transitions to Report when over
@@ -49,12 +66,13 @@ public:
 
     void saveNow() const;
 
-    // Whether the level has been won at least once (drives the replay table).
-    uint32_t bestKills() const { return bestKills_[0]; }
+    uint32_t bestKills() const { return bestKills_[static_cast<size_t>(levelIndex_)]; }
 
 private:
-    void resetWorld();             // fresh world + default turrets + bonuses
-    void applyBonuses();
+    void resetWorld();
+    void syncWorldTurrets();
+    void rebuildEffects();
+    void defaultLoadout();
     void finishBattle();
 
     std::string    savePath_;
@@ -64,10 +82,19 @@ private:
     std::array<uint32_t, kSaveLevels> bestKills_{};
     std::array<uint32_t, kSaveLevels> clearCounts_{};
 
-    Level                 level_ = makeLevel1();
+    Effects effects_;
+    int     levelIndex_ = 0;
+    Level   level_ = makeLevel1();
+
+    std::vector<Turret>    loadout_;   // the build, persistent across retries
     std::unique_ptr<World> world_;
-    SpawnDirector         director_;
-    Phase                 phase_ = Phase::Prepare;
+    SpawnDirector          director_;
+    Phase                  phase_ = Phase::Prepare;
+
+    TurretKind selectedKind_ = TurretKind::MachineGun;
+    int        timeScale_    = 1;
+    float      airstrikeCd_  = 0.0f;
+    float      overchargeCd_ = 0.0f;
 
     bool         hasResult_ = false;
     BattleResult result_;

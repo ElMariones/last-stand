@@ -23,8 +23,9 @@ class World {
 public:
     World(LevelMap levelMap, uint64_t seed);
 
-    void spawnWave(uint32_t count);
+    void spawnWave(uint32_t count, EnemyType type = EnemyType::Grunt);
     void placeTurret(Vec2 position);   // appends a default Machine Gun
+    void addTracer(Vec2 from, Vec2 to, float ttl);
     void setLevelTotal(uint32_t total) { levelTotal_ = total; }
     void tick(float dt);
 
