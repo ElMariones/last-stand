@@ -53,6 +53,7 @@ add_library(laststand_core STATIC
     src/math/Rng.cpp
     src/core/FixedTimestep.cpp
     src/sim/Grid.cpp
+    src/sim/LevelMap.cpp
 )
 target_include_directories(laststand_core PUBLIC src)
 laststand_set_warnings(laststand_core)
@@ -71,6 +72,7 @@ add_executable(laststand_tests
     tests/test_rng.cpp
     tests/test_fixedtimestep.cpp
     tests/test_grid.cpp
+    tests/test_levelmap.cpp
 )
 target_link_libraries(laststand_tests PRIVATE laststand_core doctest::doctest)
 laststand_set_warnings(laststand_tests)
