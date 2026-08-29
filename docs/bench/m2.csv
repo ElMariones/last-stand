@@ -1,0 +1,6 @@
+stage,peak_entities,ticks,tick_mean_ms,tick_p99_ms,notes
+stage0,100,600,0.011284,0.016089,naive O(n^2) separation + combat (4 turrets)
+stage0,500,600,0.131557,0.149459,naive O(n^2) separation + combat (4 turrets)
+stage0,1000,600,0.489272,0.546167,naive O(n^2) separation + combat (4 turrets)
+stage0,2000,600,1.838737,2.185000,naive O(n^2) separation + combat (4 turrets)
+stage0,5000,600,11.103947,14.958833,naive O(n^2) separation + combat (4 turrets)

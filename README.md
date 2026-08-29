@@ -6,7 +6,7 @@ agents at 120 fps on a single core before reaching for threads.
 > *You don't need to survive forever. You just need to get stronger faster
 > than they do.*
 
-**Status:** Milestone 1 of 6 — simulation foundation.
+**Status:** Milestone 2 of 6 — combat (Machine Gun, spatial hash, targeting).
 
 ## Build
 
@@ -24,6 +24,7 @@ cmake --build build -j
 |---|---|
 | `F` | toggle flow-field arrows |
 | `G` | toggle grid |
+| `T` | toggle turret range rings |
 | `SPACE` | spawn 100 more enemies |
 | `R` | reset |
 
