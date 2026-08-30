@@ -200,9 +200,9 @@ std::vector<Vec2> defaultDeployPositions(const LevelMap& map, int count,
 
     // Widening rings around the anchor. Deterministic, and dense enough that
     // eight turrets always find room on every authored map.
-    for (float radius = spacing; radius < 320.0f &&
+    for (float radius = spacing; radius < 420.0f &&
                                  static_cast<int>(out.size()) < count;
-         radius += spacing) {
+         radius += spacing * 0.75f) {
         const int steps = 8 + static_cast<int>(radius / spacing) * 4;
         for (int i = 0; i < steps && static_cast<int>(out.size()) < count; ++i) {
             const float angle = 6.28318530718f *

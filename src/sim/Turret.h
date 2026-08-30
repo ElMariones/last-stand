@@ -44,6 +44,11 @@ struct Turret {
     float overchargeTtl = 0.0f;   // remaining seconds of 2x fire rate
     float overheatTtl   = 0.0f;   // remaining seconds of no firing
 
+    // Where the barrel is pointing, in radians. Written by combat when a
+    // target is acquired and read only by the renderer — the simulation
+    // never branches on it, and it is deliberately not in the state hash.
+    float facing = 0.0f;
+
     uint32_t shotsFired = 0u;
     uint32_t kills      = 0u;
 };

@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <string>
 
+#include "render/Icons.h"
 #include "render/Theme.h"
 
 namespace ls::ui {
@@ -644,7 +645,17 @@ Result drawPrepareHud(State& state, const Session& session,
         DrawRectangleLinesEx(r, 1.0f,
                              selected ? theme::kCold
                                       : theme::withAlpha(theme::kColdDeep, 0.9f));
-        text(k.name, r.x + px(10.0f), r.y + px(6.0f), sz(theme::kMicro),
+        // The turret itself, drawn at icon scale from the same code the
+        // battlefield uses, so the card and the thing it deploys match.
+        const Vector2 icon{r.x + px(26.0f), r.y + r.height * 0.5f};
+        if (unlocked) {
+            drawTurretIcon(k.kind, icon, ui::scale() * 0.9f);
+        } else {
+            DrawCircleLinesV(icon, px(11.0f), theme::kInkFaint);
+        }
+
+        const float textX = r.x + px(50.0f);
+        text(k.name, textX, r.y + px(6.0f), sz(theme::kMicro),
              !unlocked ? theme::kInkFaint
                        : (selected ? theme::kInk : theme::kInkDim));
 
@@ -652,7 +663,7 @@ Result drawPrepareHud(State& state, const Session& session,
             char count[48];
             std::snprintf(count, sizeof(count), "%u ready / %u owned", spare,
                           session.owned(k.kind));
-            text(count, r.x + px(10.0f), r.y + px(24.0f), sz(theme::kMicro),
+            text(count, textX, r.y + px(24.0f), sz(theme::kMicro),
                  spare > 0u ? theme::kGood : theme::kInkFaint);
 
             // Buying is right here rather than in the tree: the decision
@@ -673,11 +684,11 @@ Result drawPrepareHud(State& state, const Session& session,
                 IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 result = {Action::BuyTurret, static_cast<int>(k.kind)};
             }
-            text(k.stat, r.x + px(10.0f), r.y + px(40.0f), sz(theme::kMicro),
+            text(k.stat, textX, r.y + px(40.0f), sz(theme::kMicro),
                  theme::kInkFaint);
         } else {
-            text("LOCKED - unlock it in the tree", r.x + px(10.0f),
-                 r.y + px(26.0f), sz(theme::kMicro), theme::kInkFaint);
+            text("LOCKED - unlock it in the tree", textX, r.y + px(26.0f),
+                 sz(theme::kMicro), theme::kInkFaint);
         }
 
         if (unlocked && hovered(r) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&

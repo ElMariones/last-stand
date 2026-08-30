@@ -188,6 +188,13 @@ void updateCombat(std::vector<Turret>& turrets, EnemyPool& enemies,
             continue;
         }
 
+        // Aim. Cosmetic, but a battery of turrets all facing east while the
+        // horde comes from the north reads as broken.
+        const Vec2 toTarget = enemies.position[target] - t.position;
+        if (lengthSq(toTarget) > 1e-6f) {
+            t.facing = std::atan2(toTarget.y, toTarget.x);
+        }
+
         uint32_t kills = 0u;
         switch (t.kind) {
             case TurretKind::MachineGun:

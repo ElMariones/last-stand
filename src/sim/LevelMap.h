@@ -28,8 +28,11 @@ struct LevelMap {
 // map's deploy anchor, skipping walls and the base. Auto-deploy, the
 // benchmark and the golden scenarios all use it, so "the standard defence"
 // means one thing everywhere rather than four hand-written lists.
+// `spacing` is the minimum gap; the arrangement deliberately spreads wider
+// than the legal minimum so a default defence covers ground instead of
+// huddling in one spot.
 std::vector<Vec2> defaultDeployPositions(const LevelMap& map, int count,
-                                         float spacing = 34.0f);
+                                         float spacing = 76.0f);
 
 // The eight sectors, in the order the campaign unlocks them. Each is a
 // distinct flow problem rather than a reskin (GDD 9.3): where the horde

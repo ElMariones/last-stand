@@ -89,6 +89,7 @@ add_library(laststand_core STATIC
     src/fx/DamageNumbers.cpp
     src/render/Renderer.cpp
     src/render/Viewport.cpp
+    src/render/Icons.cpp
     src/ui/Widgets.cpp
     src/ui/Screens.cpp
     src/app/Cli.cpp

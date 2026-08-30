@@ -6,6 +6,7 @@
 #include <raylib.h>
 #include <rlgl.h>
 
+#include "render/Icons.h"
 #include "render/Theme.h"
 
 namespace ls {
@@ -13,11 +14,8 @@ namespace ls {
 namespace {
 
 constexpr Color kWall       = theme::kWall;
-constexpr Color kBaseGood   = theme::kCold;
-constexpr Color kBaseBad    = theme::kDanger;
 constexpr Color kText       = theme::kInk;
 constexpr Color kFlow       {70, 90, 110, 255};
-constexpr Color kTurret     = theme::kCold;
 constexpr Color kRange      {70, 130, 160, 110};
 constexpr Color kTracer     = theme::kTracer;
 constexpr Color kOutline    = theme::kOutline;
@@ -388,32 +386,12 @@ void Renderer::drawTurrets(const World& world, const DebugFlags& flags) {
         if (flags.showTurretRange) {
             DrawCircleLinesV(toRl(t.position), t.range, kRange);
         }
-        switch (t.kind) {
-            case ls::TurretKind::MachineGun:
-                DrawCircleV(toRl(t.position), 8.0f, kTurret);
-                DrawCircleLinesV(toRl(t.position), 8.0f, theme::kInk);
-                break;
-            case ls::TurretKind::Cannon: {
-                const Rectangle r{t.position.x - 10.0f, t.position.y - 10.0f,
-                                  20.0f, 20.0f};
-                DrawRectangleV(Vector2{r.x, r.y}, Vector2{r.width, r.height},
-                               theme::kColdDim);
-                DrawRectangleLinesEx(r, 2.0f, theme::kInk);
-                break;
-            }
-            case ls::TurretKind::Flamethrower: {
-                const Vec2 r{10.0f, 0.0f};
-                const Vec2 u{0.0f, 8.0f};
-                DrawTriangle(toRl(t.position + r), toRl(t.position - r + u),
-                             toRl(t.position - r - u), theme::kFireMid);
-                break;
-            }
-        }
-        if (t.overchargeTtl > 0.0f) {
-            DrawCircleLinesV(toRl(t.position), 13.0f, theme::kScrap);
-        } else if (t.overheatTtl > 0.0f) {
-            DrawCircleLinesV(toRl(t.position), 13.0f, theme::kDanger);
-        }
+        // A soft shadow under the chassis, so turrets sit on the ground
+        // rather than floating over it.
+        DrawCircleV(Vector2{t.position.x + 1.5f, t.position.y + 3.0f}, 13.0f,
+                    theme::withAlpha(theme::kVoid, 0.5f));
+        drawTurret(t.kind, toRl(t.position), 1.25f, t.facing,
+                   t.overchargeTtl > 0.0f, t.overheatTtl > 0.0f);
     }
 }
 
@@ -481,15 +459,7 @@ void Renderer::draw(const World& world,
 
     const Base& b = world.base();
     const float frac = (b.maxHealth > 0.0f) ? (b.health / b.maxHealth) : 0.0f;
-    const Color baseColor = (frac > 0.35f) ? kBaseGood : kBaseBad;
-    // The base pulses faster the closer it is to falling.
-    const float pulse =
-        0.5f + 0.5f * std::sin(animClock_ * (3.0f + (1.0f - frac) * 9.0f));
-    DrawCircleV(toRl(b.position), b.radius,
-                theme::mix(theme::kColdDeep, baseColor, 0.55f + pulse * 0.45f));
-    DrawCircleLinesV(toRl(b.position), b.radius + 4.0f, baseColor);
-    DrawCircleLinesV(toRl(b.position), b.radius + 8.0f + pulse * 3.0f,
-                     theme::withAlpha(baseColor, 0.35f));
+    drawBase(toRl(b.position), b.radius, frac, animClock_);
 
     drawNumbers(fx);
 

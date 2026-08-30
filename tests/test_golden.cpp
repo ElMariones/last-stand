@@ -25,6 +25,12 @@
 
 namespace {
 
+// Four fixed emplacements in world units, chosen once and never derived from
+// anything the game might retune.
+constexpr ls::Vec2 kGoldenTurretSpots[4] = {
+    {690.0f, 250.0f}, {690.0f, 450.0f}, {930.0f, 210.0f}, {930.0f, 530.0f},
+};
+
 uint64_t report(const char* name, uint64_t actual, uint64_t expected) {
     if (actual != expected) {
         std::printf("GOLDEN %s: expected %llu, got %llu\n", name,
@@ -47,9 +53,11 @@ uint64_t hordeOnly() {
 uint64_t level1Battle() {
     const ls::Level level = ls::makeLevel1();
     ls::World w{level.map, 0x5EEDu};
-    for (const ls::Vec2& p : ls::defaultDeployPositions(level.map, 4)) {
-        w.placeTurret(p);
-    }
+    // Hardcoded, deliberately. Asking defaultDeployPositions where to stand
+    // would make these hashes move whenever that arrangement is tuned — and
+    // a golden hash that moves for a convenience tweak stops meaning
+    // anything. Only a simulation change may move them.
+    for (const ls::Vec2& p : kGoldenTurretSpots) w.placeTurret(p);
     w.setLevelTotal(level.totalEnemies);
 
     ls::SpawnDirector director;
@@ -68,9 +76,8 @@ uint64_t level3MixedBuild() {
     ls::World w{level.map, 0x5EEFu};
     w.setLevelTotal(level.totalEnemies);
 
-    const auto spots = ls::defaultDeployPositions(level.map, 4);
-    for (size_t i = 0; i < spots.size(); ++i) {
-        w.placeTurret(spots[i]);
+    for (size_t i = 0; i < 4u; ++i) {
+        w.placeTurret(kGoldenTurretSpots[i]);
         ls::Turret& t = w.turrets().back();
         t.armorPierce = 1.5f;
         if (i % 2u == 0u) {
@@ -110,12 +117,13 @@ uint64_t level3MixedBuild() {
 // Re-blessed twice, both times for a simulation change and never for a
 // cosmetic one — which is the whole point of these constants.
 //   1. The economy fix doubled base HP from 1,000 to 2,000.
-//   2. Movement now collides with walls, the hardpoints are gone so the
-//      standard defence stands somewhere else, and sector 3 is a different
-//      map. All three move every hash.
+//   2. Movement now collides with walls, and sector 3 is a different map.
+//      Both are simulation changes; both move every hash.
+// The scenarios pin their turret positions by hand so that tuning where a
+// default defence stands can never be mistaken for a simulation change.
 constexpr uint64_t kGoldenHorde   = 11714979920487553756ull;
-constexpr uint64_t kGoldenLevel1  = 9923931488049686869ull;
-constexpr uint64_t kGoldenLevel3  = 6759607514454592392ull;
+constexpr uint64_t kGoldenLevel1  = 10523135610880183786ull;
+constexpr uint64_t kGoldenLevel3  = 14577909366883850340ull;
 
 TEST_CASE("golden: 2,000 grunts, 1,000 ticks, movement and separation only") {
     CHECK(report("hordeOnly", hordeOnly(), kGoldenHorde) == kGoldenHorde);
