@@ -94,6 +94,9 @@ Session::Session(const char* savePath)
     }
     clampSettings(settings_);
     timeScale_ = settings_.defaultTimeScale;
+    // The session opens on the title screen, whose background is a live
+    // battle: the simulation is fast enough to be a menu backdrop after M5,
+    // so resetWorld below leaves one running behind it.
     juice_.setScale(settings_.shake());
     juice_.setHitstopEnabled(settings_.hitstop);
     effects_ = tree_.bonuses();
@@ -434,13 +437,6 @@ void Session::applySettings() {
     juice_.setScale(settings_.shake());
     juice_.setHitstopEnabled(settings_.hitstop);
     saveNow();
-}
-
-void Session::goTitle() {
-    // The title screen runs a real battle behind it, dimmed. The simulation
-    // is fast enough to be the menu background, so it is one.
-    resetWorld();
-    phase_ = Phase::Title;
 }
 
 void Session::goMenu() { phase_ = Phase::Menu; }

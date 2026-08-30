@@ -77,7 +77,6 @@ public:
     void applySettings();
 
     // --- screen navigation -------------------------------------------------
-    void goTitle();
     void goMenu();
     void goOptions();
     void goLevelSelect();
