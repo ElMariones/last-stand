@@ -279,3 +279,109 @@ TEST_CASE("corpses and particles appear where enemies die") {
     CHECK(peakParticles > 0u);
     CHECK(peakParticles <= ls::ParticlePool::kCapacity);
 }
+
+TEST_CASE("clicking a hardpoint always visibly does something") {
+    // The reported bug: every slot arrived holding a Machine Gun, the other
+    // kinds were locked, and a click replaced a Machine Gun with an identical
+    // Machine Gun. The player saw a dead mouse button.
+    Session s = freshSession();
+    REQUIRE(s.hardpointCount() == 4);
+    REQUIRE(s.turretCount() == 4);
+
+    const ls::Vec2 hp = s.hardpointAt(0);
+    REQUIRE(s.turretAtHardpoint(0) >= 0);
+
+    // Same kind on an occupied slot clears it...
+    s.toggleTurretAt(hp, 28.0f);
+    CHECK(s.turretAtHardpoint(0) < 0);
+    CHECK(s.turretCount() == 3);
+
+    // ...and clicking again puts it back.
+    s.toggleTurretAt(hp, 28.0f);
+    CHECK(s.turretAtHardpoint(0) >= 0);
+    CHECK(s.turretCount() == 4);
+}
+
+TEST_CASE("a click that misses every hardpoint changes nothing") {
+    Session s = freshSession();
+    const int before = s.turretCount();
+    s.toggleTurretAt(ls::Vec2{5.0f, 5.0f}, 28.0f);
+    CHECK(s.turretCount() == before);
+}
+
+TEST_CASE("right-click clears a slot and does nothing to an empty one") {
+    Session s = freshSession();
+    const ls::Vec2 hp = s.hardpointAt(1);
+    s.removeTurretAt(hp, 28.0f);
+    CHECK(s.turretAtHardpoint(1) < 0);
+    s.removeTurretAt(hp, 28.0f);          // idempotent
+    CHECK(s.turretAtHardpoint(1) < 0);
+}
+
+TEST_CASE("fill and clear cover every slot") {
+    Session s = freshSession();
+    s.clearLoadout();
+    CHECK(s.turretCount() == 0);
+
+    s.fillEmptyHardpoints();
+    CHECK(s.turretCount() == s.hardpointCount());
+    for (int i = 0; i < s.hardpointCount(); ++i) {
+        CHECK(s.turretAtHardpoint(i) >= 0);
+    }
+    // Filling an already-full board is not a way to exceed the slot count.
+    s.fillEmptyHardpoints();
+    CHECK(s.turretCount() == s.hardpointCount());
+}
+
+TEST_CASE("a battle can be started with no turrets at all") {
+    // The player is allowed to walk into a sector understaffed. Refusing
+    // mid-flow teaches less than letting them watch it fail.
+    Session s = freshSession();
+    s.clearLoadout();
+    s.startBattle();
+    CHECK(s.phase() == Phase::Battle);
+    for (int i = 0; i < 6000 && s.phase() == Phase::Battle; ++i) {
+        s.updateBattle(1.0f / 60.0f);
+    }
+    CHECK(s.phase() == Phase::Report);
+    CHECK(s.result().kills == 0u);
+}
+
+TEST_CASE("a locked turret kind cannot be selected or placed") {
+    Session s = freshSession();
+    REQUIRE_FALSE(s.isKindUnlocked(ls::TurretKind::Cannon));
+
+    s.selectKind(ls::TurretKind::Cannon);
+    CHECK(s.selectedKind() == ls::TurretKind::MachineGun);
+
+    s.clearLoadout();
+    s.toggleTurretAt(s.hardpointAt(0), 28.0f);
+    REQUIRE(s.turretAtHardpoint(0) >= 0);
+    CHECK(s.world()->turrets().front().kind == ls::TurretKind::MachineGun);
+}
+
+TEST_CASE("NEW GAME erases progress but keeps the player's options") {
+    Session s = freshSession();
+    s.settings().masterVolume = 33;
+    s.settings().uiScale = 125;
+    s.applySettings();
+
+    REQUIRE(playOut(s) == Phase::Report);
+    REQUIRE(s.scrap() > 0u);
+    REQUIRE(s.hasProgress());
+
+    s.newGame();
+    CHECK(s.scrap() == 0u);
+    CHECK(s.bestKillsFor(0) == 0u);
+    CHECK(s.tree().totalSpent() == 0u);
+    CHECK_FALSE(s.hasProgress());
+    CHECK(s.phase() == Phase::Prepare);
+    // Nobody wants their volume reset because they restarted the campaign.
+    CHECK(s.settings().masterVolume == 33);
+    CHECK(s.settings().uiScale == 125);
+}
+
+TEST_CASE("a fresh save has nothing to continue") {
+    const Session s{nullptr};
+    CHECK_FALSE(s.hasProgress());
+}

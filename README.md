@@ -33,6 +33,11 @@ TITLE → MENU → LEVEL SELECT → PREPARE → BATTLE → REPORT → UPGRADE TR
        OPTIONS                            PAUSE       └─────────┘
 ```
 
+The menu offers CONTINUE and NEW GAME; erasing a save takes two presses
+rather than a dialog box. Options covers volumes, window size, fullscreen,
+interface scale (75–150%), screenshake and the performance overlay, and every
+change saves immediately.
+
 Every arrow is reversible except `BATTLE → REPORT`. The title screen's
 background is a live battle, dimmed — the simulation is fast enough to be a
 menu backdrop, so it is one.
@@ -45,11 +50,13 @@ selected.
 
 | Key | Action |
 |---|---|
-| click | place the selected turret kind on a hardpoint (Prepare) |
-| `TAB` | cycle turret kind: Machine Gun → Cannon → Flamethrower |
+| click | place, replace or clear the turret on a hardpoint (Prepare) |
+| right-click | clear a hardpoint |
+| `1` `2` `3` | pick Machine Gun / Cannon / Flamethrower |
+| `F` / `C` | fill every empty hardpoint / clear them all |
 | `M` | cycle targeting mode (First → Closest → Strongest → Densest) |
 | `L` | level select (from Prepare) |
-| `SPACE` / `ENTER` | start the battle |
+| `SPACE` / `ENTER` | deploy — allowed even with slots left empty |
 | `S` | cycle time scale 1× → 2× → 4× |
 | `A` | airstrike the densest lane (if unlocked) |
 | `O` | overcharge the turret under the cursor (if unlocked) |
@@ -63,6 +70,31 @@ Scrap, the 24-node tree, per-level bests and your options persist to
 `laststand.save`. The core loop is battle → report → upgrade → retry, and the
 retry path is one keypress from either the report or the tree — it is the most
 optimised path in the game, and it is measured every milestone.
+
+## Tuning the economy
+
+The progression curve is measured, not guessed. `--balance` plays the whole
+loop headlessly with an auto-player that follows the game's own Failure
+Analysis advice when it can afford it, buys the cheapest node when it cannot,
+and advances a sector on every clear:
+
+```bash
+./build/laststand --balance 12
+```
+
+```
+run  result   kills        time   payout  bought  scrap
+  1  loss        10/100      42s      31       1      6
+  6  CLEAR       74/100      53s     401       4      0
+  9  CLEAR      250/250      55s    1500       6     32
+ 11  CLEAR      600/600     156s    4106       6     80
+```
+
+Ten kills to six hundred across eleven runs. `tests/test_balance.cpp` turns
+that shape into assertions — the first loss must buy something, no more than
+two identical runs may occur back to back, a run that spent Scrap may never
+come back smaller — so a retuned constant cannot quietly turn the game into a
+grind.
 
 ## Sound
 
@@ -135,6 +167,13 @@ Wall-clock render timing needs a desktop session:
 ```bash
 ./build/laststand --render-bench 5000 --no-lod --no-batch   # the M4 path
 ./build/laststand --render-bench 5000                       # LOD + batching
+```
+
+Screens can be captured reproducibly, which is how the UI gets reviewed
+without pressing keys fast enough:
+
+```bash
+./build/laststand --shot 12 --shot-screen tree --shot-out tree.png
 ```
 
 ## Tests
