@@ -78,6 +78,7 @@ add_library(laststand_core STATIC
     src/gameplay/UpgradeTree.cpp
     src/gameplay/Progression.cpp
     src/gameplay/Settings.cpp
+    src/gameplay/Telemetry.cpp
     src/persist/SaveGame.cpp
     src/audio/Synth.cpp
     src/audio/Mixer.cpp
@@ -132,6 +133,7 @@ add_executable(laststand_tests
     tests/test_lod.cpp
     tests/test_fx.cpp
     tests/test_audio.cpp
+    tests/test_telemetry.cpp
     tests/test_golden.cpp
     tests/test_noalloc.cpp
 )
