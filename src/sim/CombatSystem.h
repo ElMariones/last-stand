@@ -32,8 +32,14 @@ void updateCombat(std::vector<Turret>& turrets, EnemyPool& enemies,
 // Applies Burn damage-over-time and, when `ignite` is set (Flamethrower's
 // Ignite node), spreads burn to nearby enemies. Runs once per tick after all
 // turrets have fired.
+//
+// `scratch` is a caller-owned buffer of at least EnemyPool::kCapacity bytes,
+// used to snapshot who was burning at the START of the tick. Without that
+// snapshot, spreading to a higher-indexed enemy would light it in time for
+// the same loop to spread from it again, and one flamethrower would ignite
+// the entire connected crowd in a single tick.
 void applyBurn(EnemyPool& enemies, const SpatialHash& hash, float dt,
-               bool ignite);
+               bool ignite, std::vector<uint8_t>& scratch);
 
 // Swap-removes every enemy with health <= 0. Returns how many were culled.
 uint32_t cullDead(EnemyPool& enemies);

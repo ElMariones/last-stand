@@ -20,15 +20,13 @@ uint32_t applySplashAt(EnemyPool& enemies, const SpatialHash& hash,
     uint32_t kills = 0u;
     if (radius <= 0.0f) return kills;
 
-    const SpatialQuery q = hash.query(enemies.position, center, radius);
-    for (uint32_t k = 0; k < q.count; ++k) {
-        const uint32_t i = q.indices[k];
-        if (enemies.health[i] <= 0.0f) continue;
+    hash.forEachInRadius(enemies.position, center, radius, [&](uint32_t i) {
+        if (enemies.health[i] <= 0.0f) return;
 
         const Vec2  delta = enemies.position[i] - center;
         const float d = length(delta);
         const float falloff = std::max(0.0f, 1.0f - d / radius);
-        if (falloff <= 0.0f) continue;
+        if (falloff <= 0.0f) return;
 
         const float pierce =
             (enemies.type[i] == static_cast<uint8_t>(EnemyType::Tank))
@@ -38,7 +36,7 @@ uint32_t applySplashAt(EnemyPool& enemies, const SpatialHash& hash,
         if (knockback > 0.0f && d > 1e-4f) {
             enemies.position[i] += normalized(delta) * (knockback * falloff);
         }
-    }
+    });
     return kills;
 }
 
@@ -59,15 +57,15 @@ uint32_t fireMachineGun(const Turret& t, EnemyPool& enemies,
     if (t.bulletStorm && (t.shotsFired % 20u) == 19u) {
         // Every 20th shot: a 5-bullet spread hits the target and the four
         // nearest other living enemies at full damage.
-        const SpatialQuery q = hash.query(enemies.position, t.position, t.range);
         uint32_t hits[5] = {target, EnemyPool::kInvalid, EnemyPool::kInvalid,
                             EnemyPool::kInvalid, EnemyPool::kInvalid};
         uint32_t nhits = 1u;
-        for (uint32_t k2 = 0; k2 < q.count && nhits < 5u; ++k2) {
-            const uint32_t j = q.indices[k2];
-            if (j == target || enemies.health[j] <= 0.0f) continue;
-            hits[nhits++] = j;
-        }
+        hash.forEachInRadius(enemies.position, t.position, t.range,
+                             [&](uint32_t j) {
+                                 if (nhits >= 5u) return;
+                                 if (j == target || enemies.health[j] <= 0.0f) return;
+                                 hits[nhits++] = j;
+                             });
         for (uint32_t h = 0; h < nhits; ++h) {
             if (applyDamage(enemies, hits[h],
                             t.damage * pierceFor(enemies, hits[h], t.armorPierce))) {
@@ -84,17 +82,19 @@ uint32_t fireMachineGun(const Turret& t, EnemyPool& enemies,
 
     if (t.ricochet) {
         // Bounce to one additional enemy at 50% damage (GDD 5.3).
-        const SpatialQuery q = hash.query(enemies.position, t.position, t.range);
+        const Vec2 impact = enemies.position[target];
         uint32_t bounce = EnemyPool::kInvalid;
         float bestD = 1e30f;
-        for (uint32_t k2 = 0; k2 < q.count; ++k2) {
-            const uint32_t j = q.indices[k2];
-            if (j == target || enemies.health[j] <= 0.0f) continue;
-            const float d = distanceSq(enemies.position[j], enemies.position[target]);
-            if (d < bestD) { bestD = d; bounce = j; }
-        }
+        hash.forEachInRadius(enemies.position, t.position, t.range,
+                             [&](uint32_t j) {
+                                 if (j == target || enemies.health[j] <= 0.0f) return;
+                                 const float d = distanceSq(enemies.position[j], impact);
+                                 if (d < bestD) { bestD = d; bounce = j; }
+                             });
         if (bounce != EnemyPool::kInvalid &&
-            applyDamage(enemies, bounce, t.damage * 0.5f)) {
+            applyDamage(enemies, bounce,
+                        t.damage * 0.5f *
+                            pierceFor(enemies, bounce, t.armorPierce))) {
             ++kills;
         }
     }
@@ -133,24 +133,22 @@ uint32_t fireFlamethrower(const Turret& t, EnemyPool& enemies,
     const float cosHalf =
         std::cos(t.coneHalfAngle * 3.14159265358979323846f / 180.0f);
 
-    const SpatialQuery q = hash.query(enemies.position, t.position, t.range);
-    for (uint32_t k = 0; k < q.count; ++k) {
-        const uint32_t i = q.indices[k];
-        if (enemies.health[i] <= 0.0f) continue;
+    hash.forEachInRadius(enemies.position, t.position, t.range, [&](uint32_t i) {
+        if (enemies.health[i] <= 0.0f) return;
 
         const Vec2 toEnemy = enemies.position[i] - t.position;
         const float d = length(toEnemy);
         if (d < 1e-4f) {          // enemy right on top of the turret
             enemies.burnDps[i] += t.burnPerHit;
             enemies.burnTtl[i] = std::max(enemies.burnTtl[i], t.burnDuration);
-            continue;
+            return;
         }
         const float cosAngle = (toEnemy.x * dir.x + toEnemy.y * dir.y) / d;
-        if (cosAngle < cosHalf) continue;
+        if (cosAngle < cosHalf) return;
 
         enemies.burnDps[i] += t.burnPerHit;
         enemies.burnTtl[i] = std::max(enemies.burnTtl[i], t.burnDuration);
-    }
+    });
     return 0u;   // burn does not kill within this call; cullDead counts it later
 }
 
@@ -209,28 +207,39 @@ void updateCombat(std::vector<Turret>& turrets, EnemyPool& enemies,
 }
 
 void applyBurn(EnemyPool& enemies, const SpatialHash& hash, float dt,
-               bool ignite) {
-    for (uint32_t i = 0; i < enemies.count(); ++i) {
+               bool ignite, std::vector<uint8_t>& scratch) {
+    const uint32_t n = enemies.count();
+
+    // Pass 1: tick every burn down and apply its damage, snapshotting who was
+    // alight at the start of this tick.
+    for (uint32_t i = 0; i < n; ++i) {
         float& dps = enemies.burnDps[i];
         float& ttl = enemies.burnTtl[i];
         if (ttl <= 0.0f) {
             dps = 0.0f;
+            if (ignite) scratch[i] = 0u;
             continue;
         }
+        if (ignite) scratch[i] = (dps > 0.0f) ? 1u : 0u;
         ttl -= dt;
         if (dps > 0.0f) applyDamage(enemies, i, dps * dt);
         if (ttl <= 0.0f) dps = 0.0f;
+    }
 
-        if (ignite && dps > 0.0f) {
-            const SpatialQuery near =
-                hash.query(enemies.position, enemies.position[i], kIgniteSpreadRadius);
-            for (uint32_t k = 0; k < near.count; ++k) {
-                const uint32_t j = near.indices[k];
-                if (j == i || enemies.health[j] <= 0.0f) continue;
-                enemies.burnDps[j] = std::max(enemies.burnDps[j], kIgniteBurn);
-                enemies.burnTtl[j] = std::max(enemies.burnTtl[j], kIgniteTtl);
-            }
-        }
+    if (!ignite) return;
+
+    // Pass 2: spread from the snapshot only, so fire advances one hop per
+    // tick instead of flashing across the whole crowd inside one loop.
+    for (uint32_t i = 0; i < n; ++i) {
+        if (scratch[i] == 0u) continue;
+        hash.forEachInRadius(enemies.position, enemies.position[i],
+                             kIgniteSpreadRadius, [&](uint32_t j) {
+                                 if (j == i || enemies.health[j] <= 0.0f) return;
+                                 enemies.burnDps[j] =
+                                     std::max(enemies.burnDps[j], kIgniteBurn);
+                                 enemies.burnTtl[j] =
+                                     std::max(enemies.burnTtl[j], kIgniteTtl);
+                             });
     }
 }
 

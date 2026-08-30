@@ -1,5 +1,7 @@
 #include "gameplay/Level.h"
 
+#include <algorithm>
+
 namespace ls {
 
 namespace {
@@ -16,6 +18,21 @@ void addWave(std::vector<SpawnEvent>& schedule, float t0, float gap,
         remaining -= n;
         t += gap;
     }
+}
+
+// SpawnDirector releases events in order and stops at the first one that is
+// not yet due, so a schedule assembled from several overlapping addWave calls
+// MUST be sorted by time or later waves are held back and then dumped in a
+// single tick. stable_sort keeps same-time bursts in authoring order, which
+// keeps the level deterministic.
+void finalize(Level& lvl) {
+    std::stable_sort(lvl.schedule.begin(), lvl.schedule.end(),
+                     [](const SpawnEvent& a, const SpawnEvent& b) {
+                         return a.timeSeconds < b.timeSeconds;
+                     });
+    uint32_t total = 0u;
+    for (const SpawnEvent& e : lvl.schedule) total += e.count;
+    lvl.totalEnemies = total;
 }
 
 }  // namespace
@@ -35,12 +52,10 @@ Level makeLevel1() {
         {21.0f, 10u}, {24.0f, 6u}, {28.0f, 4u},  {32.0f, 4u},
     };
 
-    uint32_t total = 0u;
     for (const auto& b : bursts) {
         lvl.schedule.push_back(SpawnEvent{b.t, b.n, EnemyType::Grunt});
-        total += b.n;
     }
-    lvl.totalEnemies = total;   // 100
+    finalize(lvl);   // 100
     return lvl;
 }
 
@@ -58,9 +73,7 @@ Level makeLevel2() {
     addWave(lvl.schedule, 6.0f, 3.0f, 60u, 8u, EnemyType::Runner);
     addWave(lvl.schedule, 20.0f, 2.0f, 50u, 6u, EnemyType::Grunt);
 
-    uint32_t total = 0u;
-    for (const auto& e : lvl.schedule) total += e.count;
-    lvl.totalEnemies = total;   // 250
+    finalize(lvl);   // 250
     return lvl;
 }
 
@@ -82,9 +95,7 @@ Level makeLevel3() {
     addWave(lvl.schedule, 40.0f, 6.0f, 30u, 4u, EnemyType::Tank);
     addWave(lvl.schedule, 50.0f, 2.0f, 30u, 6u, EnemyType::Runner);
 
-    uint32_t total = 0u;
-    for (const auto& e : lvl.schedule) total += e.count;
-    lvl.totalEnemies = total;   // 600
+    finalize(lvl);   // 600
     return lvl;
 }
 

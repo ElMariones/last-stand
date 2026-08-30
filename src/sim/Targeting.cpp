@@ -15,18 +15,16 @@ uint32_t FirstStrategy::select(const EnemyPool& enemies,
                                float range, float splashRadius,
                                Vec2 basePos) const {
     (void)splashRadius;
-    const SpatialQuery q = hash.query(enemies.position, origin, range);
     uint32_t best = EnemyPool::kInvalid;
     float bestD = kInf;
-    for (uint32_t k = 0; k < q.count; ++k) {
-        const uint32_t i = q.indices[k];
-        if (enemies.health[i] <= 0.0f) continue;
+    hash.forEachInRadius(enemies.position, origin, range, [&](uint32_t i) {
+        if (enemies.health[i] <= 0.0f) return;
         const float d = distanceSq(enemies.position[i], basePos);
         if (d < bestD) {
             bestD = d;
             best = i;
         }
-    }
+    });
     return best;
 }
 
@@ -36,18 +34,16 @@ uint32_t ClosestStrategy::select(const EnemyPool& enemies,
                                  Vec2 basePos) const {
     (void)splashRadius;
     (void)basePos;
-    const SpatialQuery q = hash.query(enemies.position, origin, range);
     uint32_t best = EnemyPool::kInvalid;
     float bestD = kInf;
-    for (uint32_t k = 0; k < q.count; ++k) {
-        const uint32_t i = q.indices[k];
-        if (enemies.health[i] <= 0.0f) continue;
+    hash.forEachInRadius(enemies.position, origin, range, [&](uint32_t i) {
+        if (enemies.health[i] <= 0.0f) return;
         const float d = distanceSq(enemies.position[i], origin);
         if (d < bestD) {
             bestD = d;
             best = i;
         }
-    }
+    });
     return best;
 }
 
@@ -57,18 +53,16 @@ uint32_t StrongestStrategy::select(const EnemyPool& enemies,
                                    Vec2 basePos) const {
     (void)splashRadius;
     (void)basePos;
-    const SpatialQuery q = hash.query(enemies.position, origin, range);
     uint32_t best = EnemyPool::kInvalid;
     float bestHp = 0.0f;
-    for (uint32_t k = 0; k < q.count; ++k) {
-        const uint32_t i = q.indices[k];
+    hash.forEachInRadius(enemies.position, origin, range, [&](uint32_t i) {
         const float hp = enemies.health[i];
-        if (hp <= 0.0f) continue;
+        if (hp <= 0.0f) return;
         if (hp > bestHp) {
             bestHp = hp;
             best = i;
         }
-    }
+    });
     return best;
 }
 
@@ -77,28 +71,27 @@ uint32_t DensestStrategy::select(const EnemyPool& enemies,
                                  float range, float splashRadius,
                                  Vec2 basePos) const {
     (void)basePos;
-    const SpatialQuery q = hash.query(enemies.position, origin, range);
     uint32_t best = EnemyPool::kInvalid;
     int bestCount = -1;
-    for (uint32_t k = 0; k < q.count; ++k) {
-        const uint32_t i = q.indices[k];
-        if (enemies.health[i] <= 0.0f) continue;
+    hash.forEachInRadius(enemies.position, origin, range, [&](uint32_t i) {
+        if (enemies.health[i] <= 0.0f) return;
 
         // Count other living enemies within the splash radius of candidate i.
-        const SpatialQuery near =
-            hash.query(enemies.position, enemies.position[i], splashRadius);
+        // This nested walk is why the hash exposes a callback rather than a
+        // shared result buffer: the outer traversal is still in flight.
         int count = 0;
-        for (uint32_t n = 0; n < near.count; ++n) {
-            const uint32_t j = near.indices[n];
-            if (j != i && enemies.health[j] > 0.0f) ++count;
-        }
-        // Strict > keeps the lowest index on ties, so selection is stable and
-        // deterministic.
+        hash.forEachInRadius(enemies.position, enemies.position[i], splashRadius,
+                             [&](uint32_t j) {
+                                 if (j != i && enemies.health[j] > 0.0f) ++count;
+                             });
+        // Strict > keeps the first candidate visited on ties. Visit order is
+        // the hash's cell-major order, which is fixed for a given build, so
+        // selection stays stable and deterministic.
         if (count > bestCount) {
             bestCount = count;
             best = i;
         }
-    }
+    });
     return best;
 }
 

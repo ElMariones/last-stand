@@ -25,7 +25,8 @@ World::World(LevelMap levelMap, uint64_t seed)
     : map_(std::move(levelMap)),
       rng_(seed),
       hash_(map_.grid.worldWidth(), map_.grid.worldHeight(), kHashCell,
-            EnemyPool::kCapacity) {
+            EnemyPool::kCapacity),
+      burnScratch_(static_cast<size_t>(EnemyPool::kCapacity), 0u) {
     field_.build(map_);
     base_.position = map_.baseCenter();
     base_.radius = map_.grid.cellSize() * 1.5f;
@@ -81,7 +82,7 @@ void World::tick(float dt) {
 
     bool anyIgnite = false;
     for (const Turret& t : turrets_) anyIgnite = anyIgnite || t.ignite;
-    applyBurn(enemies_, hash_, dt, anyIgnite);
+    applyBurn(enemies_, hash_, dt, anyIgnite, burnScratch_);
 
     totalKills_ += cullDead(enemies_);
 

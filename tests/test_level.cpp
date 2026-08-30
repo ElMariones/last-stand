@@ -66,3 +66,19 @@ TEST_CASE("Level 3 totals 600 and includes Tanks and Runners") {
     CHECK(hasRunner);
     CHECK(hasTank);
 }
+
+TEST_CASE("every level schedule is sorted by time") {
+    // SpawnDirector walks the schedule in order and stops at the first event
+    // that is not yet due. An unsorted schedule (Levels 2 and 3 are assembled
+    // from several overlapping waves) therefore held later waves back and then
+    // dumped them all in one tick, wrecking the authored spawn curve.
+    const Level levels[3] = {ls::makeLevel1(), ls::makeLevel2(),
+                             ls::makeLevel3()};
+    for (const Level& lvl : levels) {
+        float last = -1.0f;
+        for (const auto& e : lvl.schedule) {
+            CHECK(e.timeSeconds >= last);
+            last = e.timeSeconds;
+        }
+    }
+}

@@ -186,8 +186,9 @@ TEST_CASE("flamethrower applies Burn, which damages over subsequent ticks") {
     CHECK(e.burnTtl[0] == doctest::Approx(3.0f));
 
     // 60 ticks = 1 second of 6 dps -> 6 damage.
+    std::vector<uint8_t> scratch(ls::EnemyPool::kCapacity, 0u);
     for (int i = 0; i < 60; ++i) {
-        ls::applyBurn(e, h, 1.0f / 60.0f, false);
+        ls::applyBurn(e, h, 1.0f / 60.0f, false, scratch);
     }
     CHECK(e.health[0] == doctest::Approx(94.0f).epsilon(0.01));
 }

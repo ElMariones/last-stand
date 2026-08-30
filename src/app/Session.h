@@ -72,8 +72,10 @@ private:
     void resetWorld();
     void syncWorldTurrets();
     void rebuildEffects();
+    void rebuildLoadout();
     void defaultLoadout();
     void finishBattle();
+    bool kindUnlocked(TurretKind kind) const;
 
     std::string    savePath_;
     SaveData       saveData_;
