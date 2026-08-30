@@ -7,6 +7,8 @@
 #include "sim/SpatialHash.h"
 #include "math/Rng.h"
 
+#include <vector>
+
 using ls::EnemyPool;
 using ls::EnemyType;
 using ls::FlowField;
@@ -28,9 +30,10 @@ LevelMap makeOpenMap() {
 // positions it is about to consume — exactly what World::tick does.
 void step(EnemyPool& p, const FlowField& f, SpatialHash& h,
           const MovementParams& params, int ticks = 1) {
+    std::vector<Vec2> push(EnemyPool::kCapacity, Vec2{0.0f, 0.0f});
     for (int i = 0; i < ticks; ++i) {
         h.build(p.position, p.count());
-        ls::updateMovement(p, f, h, 1.0f / 60.0f, params);
+        ls::updateMovement(p, f, h, 1.0f / 60.0f, params, push);
     }
 }
 
@@ -240,5 +243,47 @@ TEST_CASE("hashed separation still resolves a dense pile-up") {
         for (uint32_t j = i + 1u; j < p.count(); ++j) {
             CHECK(ls::distanceSq(p.position[i], p.position[j]) > 1e-4f);
         }
+    }
+}
+
+TEST_CASE("a separation radius wider than a hash cell still finds everyone") {
+    // The cell-pair walk only visits the 3x3 block, so it is correct only
+    // while the radius fits in one cell. Wider radii must fall back to the
+    // per-entity query rather than silently missing neighbours.
+    const LevelMap m = makeOpenMap();
+    FlowField f;
+    f.build(m);
+
+    const auto fill = [&](EnemyPool& p) {
+        ls::Pcg32 rng{7u};
+        for (int i = 0; i < 200; ++i) {
+            p.spawn(Vec2{rng.nextRange(40.0f, 160.0f),
+                         rng.nextRange(40.0f, 160.0f)},
+                    EnemyType::Grunt);
+        }
+    };
+
+    EnemyPool naive;
+    EnemyPool wide;
+    fill(naive);
+    fill(wide);
+
+    MovementParams naiveParams;
+    naiveParams.naiveSeparation = true;
+    naiveParams.separationRadius = 20.0f;      // > the 16-unit test cell
+    MovementParams wideParams;
+    wideParams.separationRadius = 20.0f;
+
+    SpatialHash hn = makeHash();
+    SpatialHash hw = makeHash();
+    REQUIRE(wideParams.separationRadius > hw.cellSize());
+    step(naive, f, hn, naiveParams, 10);
+    step(wide, f, hw, wideParams, 10);
+
+    for (uint32_t i = 0; i < naive.count(); ++i) {
+        CHECK(wide.position[i].x ==
+              doctest::Approx(naive.position[i].x).epsilon(0.001));
+        CHECK(wide.position[i].y ==
+              doctest::Approx(naive.position[i].y).epsilon(0.001));
     }
 }

@@ -20,9 +20,11 @@ uint32_t applySplashAt(EnemyPool& enemies, const SpatialHash& hash,
     uint32_t kills = 0u;
     if (radius <= 0.0f) return kills;
 
-    hash.forEachInRadius(enemies.position, center, radius, [&](uint32_t i) {
+    hash.forEachInRadius(center, radius, [&](uint32_t i, Vec2) {
         if (enemies.health[i] <= 0.0f) return;
 
+        // Knockback earlier in this traversal may already have moved this
+        // enemy, so the falloff reads the live position, not the snapshot.
         const Vec2  delta = enemies.position[i] - center;
         const float d = length(delta);
         const float falloff = std::max(0.0f, 1.0f - d / radius);
@@ -60,12 +62,11 @@ uint32_t fireMachineGun(const Turret& t, EnemyPool& enemies,
         uint32_t hits[5] = {target, EnemyPool::kInvalid, EnemyPool::kInvalid,
                             EnemyPool::kInvalid, EnemyPool::kInvalid};
         uint32_t nhits = 1u;
-        hash.forEachInRadius(enemies.position, t.position, t.range,
-                             [&](uint32_t j) {
-                                 if (nhits >= 5u) return;
-                                 if (j == target || enemies.health[j] <= 0.0f) return;
-                                 hits[nhits++] = j;
-                             });
+        hash.forEachInRadius(t.position, t.range, [&](uint32_t j, Vec2) {
+            if (nhits >= 5u) return;
+            if (j == target || enemies.health[j] <= 0.0f) return;
+            hits[nhits++] = j;
+        });
         for (uint32_t h = 0; h < nhits; ++h) {
             if (applyDamage(enemies, hits[h],
                             t.damage * pierceFor(enemies, hits[h], t.armorPierce))) {
@@ -85,12 +86,11 @@ uint32_t fireMachineGun(const Turret& t, EnemyPool& enemies,
         const Vec2 impact = enemies.position[target];
         uint32_t bounce = EnemyPool::kInvalid;
         float bestD = 1e30f;
-        hash.forEachInRadius(enemies.position, t.position, t.range,
-                             [&](uint32_t j) {
-                                 if (j == target || enemies.health[j] <= 0.0f) return;
-                                 const float d = distanceSq(enemies.position[j], impact);
-                                 if (d < bestD) { bestD = d; bounce = j; }
-                             });
+        hash.forEachInRadius(t.position, t.range, [&](uint32_t j, Vec2 jPos) {
+            if (j == target || enemies.health[j] <= 0.0f) return;
+            const float d = distanceSq(jPos, impact);
+            if (d < bestD) { bestD = d; bounce = j; }
+        });
         if (bounce != EnemyPool::kInvalid &&
             applyDamage(enemies, bounce,
                         t.damage * 0.5f *
@@ -133,10 +133,10 @@ uint32_t fireFlamethrower(const Turret& t, EnemyPool& enemies,
     const float cosHalf =
         std::cos(t.coneHalfAngle * 3.14159265358979323846f / 180.0f);
 
-    hash.forEachInRadius(enemies.position, t.position, t.range, [&](uint32_t i) {
+    hash.forEachInRadius(t.position, t.range, [&](uint32_t i, Vec2 pos) {
         if (enemies.health[i] <= 0.0f) return;
 
-        const Vec2 toEnemy = enemies.position[i] - t.position;
+        const Vec2 toEnemy = pos - t.position;
         const float d = length(toEnemy);
         if (d < 1e-4f) {          // enemy right on top of the turret
             enemies.burnDps[i] += t.burnPerHit;
@@ -232,8 +232,8 @@ void applyBurn(EnemyPool& enemies, const SpatialHash& hash, float dt,
     // tick instead of flashing across the whole crowd inside one loop.
     for (uint32_t i = 0; i < n; ++i) {
         if (scratch[i] == 0u) continue;
-        hash.forEachInRadius(enemies.position, enemies.position[i],
-                             kIgniteSpreadRadius, [&](uint32_t j) {
+        hash.forEachInRadius(enemies.position[i], kIgniteSpreadRadius,
+                             [&](uint32_t j, Vec2) {
                                  if (j == i || enemies.health[j] <= 0.0f) return;
                                  enemies.burnDps[j] =
                                      std::max(enemies.burnDps[j], kIgniteBurn);

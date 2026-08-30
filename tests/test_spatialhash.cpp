@@ -11,10 +11,9 @@ using ls::Vec2;
 namespace {
 
 // Collects a radius query into a plain vector, preserving visit order.
-std::vector<uint32_t> collect(const SpatialHash& h,
-                              const std::vector<Vec2>& p, Vec2 c, float r) {
+std::vector<uint32_t> collect(const SpatialHash& h, Vec2 c, float r) {
     std::vector<uint32_t> out;
-    h.forEachInRadius(p, c, r, [&](uint32_t i) { out.push_back(i); });
+    h.forEachInRadius(c, r, [&](uint32_t i, Vec2) { out.push_back(i); });
     return out;
 }
 
@@ -36,7 +35,7 @@ TEST_CASE("an entity at the origin is found within range") {
     std::vector<Vec2> p{{10.0f, 10.0f}};
     h.build(p, 1u);
 
-    const auto q = collect(h, p, Vec2{10.0f, 10.0f}, 100.0f);
+    const auto q = collect(h, Vec2{10.0f, 10.0f}, 100.0f);
     REQUIRE(q.size() == 1u);
     CHECK(q[0] == 0u);
 }
@@ -46,7 +45,7 @@ TEST_CASE("an entity beyond radius is not found") {
     std::vector<Vec2> p{{0.0f, 0.0f}, {500.0f, 0.0f}};
     h.build(p, 2u);
 
-    const auto q = collect(h, p, Vec2{0.0f, 0.0f}, 50.0f);
+    const auto q = collect(h, Vec2{0.0f, 0.0f}, 50.0f);
     REQUIRE(q.size() == 1u);
     CHECK(q[0] == 0u);
 }
@@ -58,8 +57,8 @@ TEST_CASE("query respects cell boundaries") {
     h.build(p, 1u);
 
     // Probe centered in a neighbouring cell, radius not reaching (128,64).
-    CHECK(collect(h, p, Vec2{200.0f, 0.0f}, 30.0f).empty());
-    CHECK(collect(h, p, Vec2{160.0f, 64.0f}, 40.0f).size() == 1u);
+    CHECK(collect(h, Vec2{200.0f, 0.0f}, 30.0f).empty());
+    CHECK(collect(h, Vec2{160.0f, 64.0f}, 40.0f).size() == 1u);
 }
 
 TEST_CASE("clamped off-world entities are not dropped or mis-indexed") {
@@ -69,7 +68,7 @@ TEST_CASE("clamped off-world entities are not dropped or mis-indexed") {
 
     // A radius covering both true positions finds both: the clamp only
     // places them in the edge cell, it does not drop them from the set.
-    const auto q = collect(h, p, Vec2{500.0f, 500.0f}, 100000.0f);
+    const auto q = collect(h, Vec2{500.0f, 500.0f}, 100000.0f);
     CHECK(q.size() == 2u);
     CHECK(found(q, 0u));
     CHECK(found(q, 1u));
@@ -80,16 +79,16 @@ TEST_CASE("a query far outside the world returns empty") {
     std::vector<Vec2> p{{100.0f, 100.0f}};
     h.build(p, 1u);
 
-    CHECK(collect(h, p, Vec2{5000.0f, 5000.0f}, 50.0f).empty());
+    CHECK(collect(h, Vec2{5000.0f, 5000.0f}, 50.0f).empty());
 }
 
 TEST_CASE("build is stable across an identical rebuild") {
     SpatialHash h{1000.0f, 1000.0f, 64.0f, 1024u};
     std::vector<Vec2> p{{10.0f, 10.0f}, {90.0f, 90.0f}, {200.0f, 30.0f}};
     h.build(p, 3u);
-    const auto a = collect(h, p, Vec2{100.0f, 100.0f}, 100.0f);
+    const auto a = collect(h, Vec2{100.0f, 100.0f}, 100.0f);
     h.build(p, 3u);
-    const auto b = collect(h, p, Vec2{100.0f, 100.0f}, 100.0f);
+    const auto b = collect(h, Vec2{100.0f, 100.0f}, 100.0f);
     CHECK(a == b);
 }
 
@@ -104,13 +103,14 @@ TEST_CASE("a nested query does not disturb the enclosing one") {
     }
     h.build(p, static_cast<uint32_t>(p.size()));
 
-    const auto expected = collect(h, p, Vec2{100.0f, 100.0f}, 90.0f);
+    const auto expected = collect(h, Vec2{100.0f, 100.0f}, 90.0f);
     REQUIRE(expected.size() > 4u);
 
     std::vector<uint32_t> observed;
-    h.forEachInRadius(p, Vec2{100.0f, 100.0f}, 90.0f, [&](uint32_t i) {
+    h.forEachInRadius(Vec2{100.0f, 100.0f}, 90.0f, [&](uint32_t i, Vec2 pos) {
         int inner = 0;
-        h.forEachInRadius(p, p[i], 40.0f, [&](uint32_t) { ++inner; });
+        CHECK(pos.x == doctest::Approx(p[i].x));
+        h.forEachInRadius(pos, 40.0f, [&](uint32_t, Vec2) { ++inner; });
         CHECK(inner > 0);
         observed.push_back(i);
     });

@@ -13,7 +13,8 @@ SpatialHash::SpatialHash(float worldWidth, float worldHeight, float cellSize,
       counts_(static_cast<size_t>(cols_) * static_cast<size_t>(rows_), 0),
       starts_(static_cast<size_t>(cols_) * static_cast<size_t>(rows_) + 1, 0),
       cursor_(static_cast<size_t>(cols_) * static_cast<size_t>(rows_), 0),
-      sorted_(static_cast<size_t>(maxEntities), 0u) {}
+      sorted_(static_cast<size_t>(maxEntities), 0u),
+      sortedPos_(static_cast<size_t>(maxEntities), Vec2{0.0f, 0.0f}) {}
 
 int SpatialHash::cellOf(Vec2 p) const {
     int cx = static_cast<int>(p.x / cellSize_);
@@ -60,7 +61,10 @@ void SpatialHash::build(const std::vector<Vec2>& positions, uint32_t count) {
 
     for (uint32_t i = 0; i < count; ++i) {
         const int cell = cellOf(positions[i]);
-        sorted_[static_cast<size_t>(cursor_[static_cast<size_t>(cell)]++)] = i;
+        const size_t slot =
+            static_cast<size_t>(cursor_[static_cast<size_t>(cell)]++);
+        sorted_[slot] = i;
+        sortedPos_[slot] = positions[i];
     }
 }
 

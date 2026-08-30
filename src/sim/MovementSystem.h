@@ -1,4 +1,6 @@
 #pragma once
+#include <vector>
+
 #include "ai/FlowField.h"
 #include "sim/EnemyPool.h"
 #include "sim/SpatialHash.h"
@@ -20,12 +22,19 @@ struct MovementParams {
 // Advances every live enemy by one tick: sample the flow field for
 // direction, add a local separation force, integrate.
 //
-// `hash` must have been built over the pool's CURRENT positions. Separation
-// reads it for neighbours; the naive path ignores it.
+// `hash` must have been built over the pool's CURRENT positions; separation
+// reads neighbours from it. `pushScratch` is a caller-owned buffer of at
+// least EnemyPool::kCapacity entries — separation accumulates into it, and
+// owning it here is what keeps a tick allocation-free.
+//
+// Separation is order-independent: every enemy is pushed by where its
+// neighbours were at the START of the tick, never by where the ones already
+// processed have moved to.
 void updateMovement(EnemyPool& pool,
                     const FlowField& field,
                     const SpatialHash& hash,
                     float dt,
-                    const MovementParams& params);
+                    const MovementParams& params,
+                    std::vector<Vec2>& pushScratch);
 
 }  // namespace ls

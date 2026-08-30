@@ -17,9 +17,9 @@ uint32_t FirstStrategy::select(const EnemyPool& enemies,
     (void)splashRadius;
     uint32_t best = EnemyPool::kInvalid;
     float bestD = kInf;
-    hash.forEachInRadius(enemies.position, origin, range, [&](uint32_t i) {
+    hash.forEachInRadius(origin, range, [&](uint32_t i, Vec2 pos) {
         if (enemies.health[i] <= 0.0f) return;
-        const float d = distanceSq(enemies.position[i], basePos);
+        const float d = distanceSq(pos, basePos);
         if (d < bestD) {
             bestD = d;
             best = i;
@@ -36,9 +36,9 @@ uint32_t ClosestStrategy::select(const EnemyPool& enemies,
     (void)basePos;
     uint32_t best = EnemyPool::kInvalid;
     float bestD = kInf;
-    hash.forEachInRadius(enemies.position, origin, range, [&](uint32_t i) {
+    hash.forEachInRadius(origin, range, [&](uint32_t i, Vec2 pos) {
         if (enemies.health[i] <= 0.0f) return;
-        const float d = distanceSq(enemies.position[i], origin);
+        const float d = distanceSq(pos, origin);
         if (d < bestD) {
             bestD = d;
             best = i;
@@ -55,7 +55,7 @@ uint32_t StrongestStrategy::select(const EnemyPool& enemies,
     (void)basePos;
     uint32_t best = EnemyPool::kInvalid;
     float bestHp = 0.0f;
-    hash.forEachInRadius(enemies.position, origin, range, [&](uint32_t i) {
+    hash.forEachInRadius(origin, range, [&](uint32_t i, Vec2) {
         const float hp = enemies.health[i];
         if (hp <= 0.0f) return;
         if (hp > bestHp) {
@@ -73,17 +73,16 @@ uint32_t DensestStrategy::select(const EnemyPool& enemies,
     (void)basePos;
     uint32_t best = EnemyPool::kInvalid;
     int bestCount = -1;
-    hash.forEachInRadius(enemies.position, origin, range, [&](uint32_t i) {
+    hash.forEachInRadius(origin, range, [&](uint32_t i, Vec2 pos) {
         if (enemies.health[i] <= 0.0f) return;
 
         // Count other living enemies within the splash radius of candidate i.
         // This nested walk is why the hash exposes a callback rather than a
         // shared result buffer: the outer traversal is still in flight.
         int count = 0;
-        hash.forEachInRadius(enemies.position, enemies.position[i], splashRadius,
-                             [&](uint32_t j) {
-                                 if (j != i && enemies.health[j] > 0.0f) ++count;
-                             });
+        hash.forEachInRadius(pos, splashRadius, [&](uint32_t j, Vec2) {
+            if (j != i && enemies.health[j] > 0.0f) ++count;
+        });
         // Strict > keeps the first candidate visited on ties. Visit order is
         // the hash's cell-major order, which is fixed for a given build, so
         // selection stays stable and deterministic.

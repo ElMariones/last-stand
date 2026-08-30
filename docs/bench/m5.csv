@@ -9,3 +9,8 @@ stage1,500,1200,0.076343,0.096834,spatial-hash separation, 12-unit cells
 stage1,1000,1200,0.182886,0.220125,spatial-hash separation, 12-unit cells
 stage1,2000,1200,0.420074,0.489666,spatial-hash separation, 12-unit cells
 stage1,5000,1200,1.244866,1.752750,spatial-hash separation, 12-unit cells
+stage2,100,1200,0.009971,0.011584,cell-pair walk: each interaction once, cell-packed positions
+stage2,500,1200,0.032881,0.040583,cell-pair walk: each interaction once, cell-packed positions
+stage2,1000,1200,0.075270,0.098334,cell-pair walk: each interaction once, cell-packed positions
+stage2,2000,1200,0.178431,0.221625,cell-pair walk: each interaction once, cell-packed positions
+stage2,5000,1200,0.567655,0.790875,cell-pair walk: each interaction once, cell-packed positions

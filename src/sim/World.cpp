@@ -36,7 +36,8 @@ World::World(LevelMap levelMap, uint64_t seed)
       rng_(seed),
       hash_(map_.grid.worldWidth(), map_.grid.worldHeight(), kHashCell,
             EnemyPool::kCapacity),
-      burnScratch_(static_cast<size_t>(EnemyPool::kCapacity), 0u) {
+      burnScratch_(static_cast<size_t>(EnemyPool::kCapacity), 0u),
+      pushScratch_(static_cast<size_t>(EnemyPool::kCapacity), Vec2{0.0f, 0.0f}) {
     field_.build(map_);
     base_.position = map_.baseCenter();
     base_.radius = map_.grid.cellSize() * 1.5f;
@@ -81,7 +82,7 @@ void World::tick(float dt) {
     // far less than either consumer querying stale cells would cost in
     // correctness.
     hash_.build(enemies_.position, enemies_.count());
-    updateMovement(enemies_, field_, hash_, dt, movement_);
+    updateMovement(enemies_, field_, hash_, dt, movement_, pushScratch_);
     hash_.build(enemies_.position, enemies_.count());
 
     // Age tracers before combat so brand-new ones aren't aged this tick.

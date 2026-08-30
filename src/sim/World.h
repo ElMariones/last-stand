@@ -75,9 +75,11 @@ private:
     MovementParams movement_;
     SpatialHash    hash_;
     std::vector<Turret>             turrets_;
-    // Sized once at construction: applyBurn's "who was alight at the start of
-    // the tick" snapshot, kept here so no tick ever allocates.
+    // Sized once at construction, so no tick ever allocates: applyBurn's
+    // "who was alight at the start of the tick" snapshot, and separation's
+    // per-enemy force accumulator.
     std::vector<uint8_t>            burnScratch_;
+    std::vector<Vec2>               pushScratch_;
     std::array<Tracer, kMaxTracers> tracers_{};
     uint32_t        tracerCount_  = 0u;
     uint64_t        ticks_        = 0u;
