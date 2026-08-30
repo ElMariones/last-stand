@@ -373,8 +373,17 @@ Result drawStats(State& state, const Session& session) {
     std::snprintf(value, sizeof(value), "%u  (%.0f%%)", st.victories,
                   static_cast<double>(st.winRate() * 100.0f));
     line2("Sectors held", value, st.victories > 0u ? theme::kGood : theme::kInkDim);
-    const uint32_t mins = st.secondsPlayed / 60u;
-    std::snprintf(value, sizeof(value), "%uh %02um", mins / 60u, mins % 60u);
+    // Seconds early on, minutes soon after, hours eventually: "0h 00m" after
+    // a first forty-second run reads as a broken counter.
+    const uint32_t secs = st.secondsPlayed;
+    if (secs < 60u) {
+        std::snprintf(value, sizeof(value), "%us", secs);
+    } else if (secs < 3600u) {
+        std::snprintf(value, sizeof(value), "%um %02us", secs / 60u, secs % 60u);
+    } else {
+        std::snprintf(value, sizeof(value), "%uh %02um", secs / 3600u,
+                      (secs % 3600u) / 60u);
+    }
     line2("Time in the field", value, theme::kInk);
 
     section("DESTRUCTION");
