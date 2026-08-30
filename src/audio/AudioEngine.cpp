@@ -75,6 +75,7 @@ void AudioEngine::init() {
     }
     buildBed(0u, specCrowdBed());
     buildBed(1u, specGunBed());
+    buildBed(2u, specMusicBed());
     ready_ = true;
     applySettings(settings_);
 }
@@ -136,8 +137,10 @@ void AudioEngine::update(float dt, uint32_t kills, uint32_t shots,
     // horde instead of thousands of one-shots (GDD 12.4), and their gain
     // tracks the rate, so the audio itself reports progression: early game is
     // individual pops, late game is a roar.
-    const float wanted[2] = {inBattle ? mixer_.crowdBedGain() : 0.0f,
-                             inBattle ? mixer_.gunBedGain() : 0.0f};
+    // Music runs everywhere, including the menus; the aggregation beds only
+    // exist while there is a battle to aggregate.
+    const float wanted[3] = {inBattle ? mixer_.crowdBedGain() : 0.0f,
+                             inBattle ? mixer_.gunBedGain() : 0.0f, 1.0f};
     for (size_t b = 0; b < beds_.size(); ++b) {
         Voice& bed = beds_[b];
         if (bed.sound == nullptr) continue;
@@ -146,7 +149,9 @@ void AudioEngine::update(float dt, uint32_t kills, uint32_t shots,
         bedGain_[b] += (wanted[b] - bedGain_[b]) *
                        std::clamp(4.0f * dt, 0.0f, 1.0f);
 
-        const float gain = bedGain_[b] * settings_.sfx();
+        const bool isMusic = (b == 2u);
+        const float gain =
+            bedGain_[b] * (isMusic ? settings_.music() : settings_.sfx());
         if (gain <= 0.005f) {
             if (IsSoundPlaying(*asSound(bed.sound))) {
                 StopSound(*asSound(bed.sound));
@@ -192,12 +197,15 @@ void AudioEngine::play(SoundId id) {
 
 void AudioEngine::stopBeds() {
     if (!ready_) return;
-    for (Voice& bed : beds_) {
+    // The battle beds only; the music keeps going across the report and the
+    // tree, because silence between runs makes the loop feel like a stop.
+    for (size_t b = 0; b < 2u; ++b) {
+        Voice& bed = beds_[b];
         if (bed.sound != nullptr && IsSoundPlaying(*asSound(bed.sound))) {
             StopSound(*asSound(bed.sound));
         }
+        bedGain_[b] = 0.0f;
     }
-    bedGain_ = {0.0f, 0.0f};
 }
 
 }  // namespace ls

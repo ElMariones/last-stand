@@ -84,6 +84,16 @@ TEST_CASE("a bed loop fades both ends so the seam is inaudible") {
     CHECK(edge < middle / 4);
 }
 
+TEST_CASE("the music bed loops seamlessly too") {
+    // It runs continuously across every screen, so a seam would be the most
+    // audible defect in the game.
+    std::vector<int16_t> pcm;
+    ls::renderLoop(ls::specMusicBed(), pcm);
+    REQUIRE(pcm.size() > 1000u);
+    CHECK(std::abs(pcm.front()) < 400);
+    CHECK(std::abs(pcm.back()) < 400);
+}
+
 TEST_CASE("a sound with no glide still renders") {
     SynthSpec spec;
     spec.startFreq = 0.0f;

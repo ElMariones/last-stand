@@ -209,6 +209,19 @@ SynthSpec specDefeat() {
     return s;
 }
 
+// The music bed: a slow, low, detuned drone. Not a tune — a tune written in
+// four sine waves would be worse than none, and the mix already has a job
+// (GDD 12.4) which is to make four thousand kills a minute listenable. This
+// sits under everything and gives the silence a floor.
+SynthSpec specMusicBed() {
+    SynthSpec s;
+    s.seconds = 3.2f;   s.startFreq = 55.0f;  s.endFreq = 41.2f;
+    s.noiseMix = 0.12f; s.lowpass = 0.06f;    s.drive = 1.2f;
+    s.amplitude = 0.45f;
+    s.seed = 151u;
+    return s;
+}
+
 // The two aggregation beds. Above the kill/shot rate thresholds these replace
 // the one-shots entirely, which is the only way 4,000 kills a minute is
 // listenable (GDD 12.4).

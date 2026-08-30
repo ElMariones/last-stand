@@ -58,8 +58,10 @@ private:
     int  countActive() const;
 
     std::array<Voice, kSoundCount> voices_{};
-    std::array<Voice, 2> beds_{};       // 0 crowd, 1 gunfire
-    std::array<float, 2> bedGain_{{0.0f, 0.0f}};
+    // 0 crowd, 1 gunfire, 2 music. The first two are aggregation (GDD 12.4);
+    // the third is the ambient floor under everything.
+    std::array<Voice, 3> beds_{};
+    std::array<float, 3> bedGain_{{0.0f, 0.0f, 0.0f}};
 
     Settings settings_;
     Mixer    mixer_;

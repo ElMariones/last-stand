@@ -48,6 +48,7 @@ SynthSpec specUiSelect();
 SynthSpec specUiBack();
 SynthSpec specVictory();
 SynthSpec specDefeat();
+SynthSpec specMusicBed();
 SynthSpec specCrowdBed();
 SynthSpec specGunBed();
 
