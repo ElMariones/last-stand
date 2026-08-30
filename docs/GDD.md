@@ -856,6 +856,6 @@ M1 deliberately builds the two things that are impossible to retrofit — **the 
 ## Open questions
 
 1. **Is the passive battle actually fun?** The largest unknown. §4.3 is the mitigation plan; M3 is the decision point.
-2. **Does the 75% loss payout feel generous or pointless?** Needs playtesting; expect to tune upward.
-3. **Is `DENSEST` targeting readable to the player,** or does it look like the turret is misfiring? May need a visual tell.
+2. **Does the 75% loss payout feel generous or pointless?** ~~Needs playtesting~~ — **measured at M6, and it is too tight.** With the starting loadout, Level 1 is a deterministic 10 kills of 100 and a payout of 23 Scrap, while the cheapest node costs 35. That is two full runs before the player can buy anything, and because the level is a fixed invasion the second run is identical to the first — so the personal-best line never fires and the psychological loop in §13 stays flat until the first purchase lands. The loop works; the first ten minutes of it do not. Candidates, in order of preference: raise the defeat factor from 0.75, raise `killValue`, or lower the base cost of the tier-one stat nodes. Not changed yet — it is a design call, not an engineering one.
+3. **Is `DENSEST` targeting readable to the player,** or does it look like the turret is misfiring? Still open. The M6 tracer treatment (bright core over a soft body) helps read *where* a turret is shooting, but nothing yet explains *why* it chose that target. A ghosted splash circle on the chosen cluster is the cheapest next attempt.
 4. **Working title.** See the note at the top.

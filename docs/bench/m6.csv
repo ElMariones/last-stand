@@ -1,0 +1,6 @@
+stage,peak_entities,ticks,tick_mean_ms,tick_p99_ms,notes
+m6,100,1200,0.009773,0.013750,simulation unchanged; juice, UI and audio are downstream
+m6,500,1200,0.031355,0.048333,simulation unchanged; juice, UI and audio are downstream
+m6,1000,1200,0.070538,0.101500,simulation unchanged; juice, UI and audio are downstream
+m6,2000,1200,0.167199,0.229875,simulation unchanged; juice, UI and audio are downstream
+m6,5000,1200,0.527426,0.720000,simulation unchanged; juice, UI and audio are downstream

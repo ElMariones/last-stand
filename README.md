@@ -6,10 +6,14 @@ agents at 120 fps on a single core before reaching for threads.
 > *You don't need to survive forever. You just need to get stronger faster
 > than they do.*
 
-**Status:** Milestone 5 of 6 — scale. 5,000 entities simulate in **0.56 ms**
-per tick, 19% of the 3.0 ms simulation budget, down from 14.7 ms at the naive
-baseline. Density-driven LOD, a golden-hash determinism test, and an asserted
-zero-allocation battle.
+**Status:** Milestone 6 of 6 — the slice is complete. Title screen, menus and
+options; procedural audio that aggregates into a roar; hitstop, screenshake,
+particles, corpses and Scrap arcs; and a Battle Report that tells you where you
+were breached, by how much you missed, and which two nodes fix it.
+
+5,000 entities still simulate in **0.53 ms** per tick — 18% of the 3.0 ms
+budget, down from 14.7 ms at the naive baseline — because none of the above is
+allowed to touch `sim/`.
 
 ## Build
 
@@ -21,27 +25,59 @@ cmake --build build -j
 ./build/laststand
 ```
 
+## Screens
+
+```
+TITLE → MENU → LEVEL SELECT → PREPARE → BATTLE → REPORT → UPGRADE TREE
+          ↓                                 ↓         ↑         │
+       OPTIONS                            PAUSE       └─────────┘
+```
+
+Every arrow is reversible except `BATTLE → REPORT`. The title screen's
+background is a live battle, dimmed — the simulation is fast enough to be a
+menu backdrop, so it is one.
+
 ## Controls
+
+Menus take the arrow keys, the mouse, `ENTER` and `ESC`; hovering with the
+mouse moves the keyboard focus, so the two never disagree about what is
+selected.
 
 | Key | Action |
 |---|---|
-| `F` / `G` / `T` | toggle flow-field / grid / range rings |
-| `1` `2` `3` | select level 1/2/3 (from Prepare) |
 | click | place the selected turret kind on a hardpoint (Prepare) |
 | `TAB` | cycle turret kind: Machine Gun → Cannon → Flamethrower |
 | `M` | cycle targeting mode (First → Closest → Strongest → Densest) |
+| `L` | level select (from Prepare) |
 | `SPACE` / `ENTER` | start the battle |
 | `S` | cycle time scale 1× → 2× → 4× |
 | `A` | airstrike the densest lane (if unlocked) |
 | `O` | overcharge the turret under the cursor (if unlocked) |
+| `ESC` | pause (battle) · back (menus) |
 | `R` | retry — restart the level with the same loadout |
 | `U` | open the upgrade tree (from the report) |
-| `↑`/`↓` + `ENTER` | select and buy a node (tree) |
 | `X` | respec all (tree) |
+| `F` / `G` / `T` | debug: flow-field / grid / range rings |
 
-The game state (Scrap, 24-node tree, per-level bests) persists to
-`laststand.save`. The core loop is: battle → report → upgrade → retry, with
-the retry path a single keypress from either the report or the tree.
+Scrap, the 24-node tree, per-level bests and your options persist to
+`laststand.save`. The core loop is battle → report → upgrade → retry, and the
+retry path is one keypress from either the report or the tree — it is the most
+optimised path in the game, and it is measured every milestone.
+
+## Sound
+
+There are no audio files in this repository. All fourteen voices are
+synthesised at launch from a spec — an oscillator glide, a noise mix, a
+one-pole lowpass, an envelope and a seed — which keeps the one-command build
+honest and the mix tunable by constant rather than by re-export.
+
+The hard problem at four thousand kills a minute is that one death sound per
+enemy is unlistenable. Above a smoothed rate threshold, deaths and gunfire stop
+playing individually and hand over to two continuous beds whose gain tracks the
+rate, with the 32-voice cap spent on what you must not miss: the base being
+hit, an ability landing, the UI answering you. The audio ends up reporting
+progression on its own — the early game is individual pops, the late game is a
+roar.
 
 ## Benchmark
 
@@ -143,5 +179,10 @@ Two of them are worth pointing at:
   demonstrates nothing.
 - **Draw calls are a function of tier count, not entity count.** Enemies are
   bucketed by LOD tier and each bucket is submitted in one batch.
+- **Juice cannot reach the simulation.** Hitstop withholds whole ticks from the
+  fixed timestep rather than scaling `dt`; screenshake is a `Camera2D` offset;
+  particles, corpses and damage numbers live in `fx/`, which the layering test
+  forbids from including raylib. The evidence that Milestone 6 stayed cosmetic
+  is that the three golden hashes from Milestone 5 still pass untouched.
 
 Design document: [`docs/GDD.md`](docs/GDD.md).

@@ -34,3 +34,11 @@ render-side — and is recorded to say so.
 
 The 5,000-entity rung is the one the slice targets: 14.717 ms → 0.568 ms, inside
 a 3.0 ms budget with room for the V1 counts to eat.
+
+## m6.csv
+
+Milestone 6 added juice, UI and audio, none of which is allowed inside `sim/`.
+The m6 rows exist to prove it: they are the same ladder, unchanged from M5
+stage 3 within run-to-run noise. The one thing the simulation gained is a
+write-only log of who died each tick, so the fx layer can put a corpse where
+the enemy was; the golden hashes from M5 still pass untouched.
