@@ -274,68 +274,191 @@ Result drawOptions(State& state, Session& session) {
     return {};
 }
 
-// ---------------------------------------------------------- level select ---
+// ------------------------------------------------------------ sector map ---
+
+namespace {
+
+// The campaign laid out as a route rather than a list. Positions are in map
+// space; the screen pans over them, so the board can be bigger than the
+// window and still feel like one place.
+struct SectorNode { float x; float y; };
+constexpr SectorNode kSectorLayout[8] = {
+    {180.0f, 520.0f}, {420.0f, 400.0f}, {690.0f, 470.0f}, {940.0f, 320.0f},
+    {1200.0f, 430.0f}, {1470.0f, 300.0f}, {1740.0f, 440.0f}, {2020.0f, 300.0f},
+};
+constexpr float kMapWidth = 2200.0f;
+
+const char* const kSectorBlurb[8] = {
+    "One lane, one chokepoint. Where it starts.",
+    "Two lanes converging. Rear-only coverage dies here.",
+    "An open approach into a hard funnel.",
+    "Two paths that never meet. Split your guns.",
+    "One long switchback. Everything passes you twice.",
+    "Four entrances. Nothing is defended by facing one way.",
+    "Three chokepoints in series. Compress, release, compress.",
+    "No cover, three sides. Purely how fast you can kill.",
+};
+
+}  // namespace
 
 Result drawLevelSelect(State& state, const Session& session) {
-    scrim(0.85f);
-    state.levels.begin(3);
-    navigate(state.levels);
+    // Heavier than the other overlays: the route has to read as a map, and a
+    // battle glowing through it just looks like dirt on the screen.
+    scrim(0.965f);
 
-    const Rectangle box = column(700.0f, screenH() * 0.16f, row() * 7.5f);
-    panelTitled(box, "SELECT SECTOR");
+    const float mapTop = screenH() * 0.16f;
+    const float mapH = screenH() * 0.56f;
+    const Rectangle board{0.0f, mapTop, screenW(), mapH};
 
-    struct Row { const char* name; const char* blurb; uint32_t power; };
-    const Row rows[3] = {
-        {"1 · THE OUTSKIRTS", "100 grunts, one lane. Where it starts.", 10u},
-        {"2 · REFINERY GATE", "250, with runners. Rear-only coverage dies here.", 25u},
-        {"3 · THE NARROWS",   "600, with tanks. Positioning beats raw damage.", 60u},
+    // Centre on the furthest sector the player has opened, once, so a
+    // returning player arrives looking at where they got to.
+    if (!state.mapCentred) {
+        const int furthest = session.furthestUnlockedLevel();
+        state.mapPan.x = screenW() * 0.5f -
+                         px(kSectorLayout[static_cast<size_t>(furthest)].x);
+        state.mapCentred = true;
+    }
+
+    // Drag to pan. Clamped so the route cannot be dragged off the screen
+    // entirely, which is the usual way a pannable board gets lost.
+    const Vector2 mouse = GetMousePosition();
+    if (CheckCollisionPointRec(mouse, board)) {
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            state.mapDragging = true;
+            state.mapGrab = Vec2{mouse.x - state.mapPan.x, 0.0f};
+        }
+        const float wheel = GetMouseWheelMove();
+        if (wheel != 0.0f) state.mapPan.x += wheel * px(60.0f);
+    }
+    if (state.mapDragging) {
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            state.mapPan.x = mouse.x - state.mapGrab.x;
+        } else {
+            state.mapDragging = false;
+        }
+    }
+    const float span = px(kMapWidth);
+    state.mapPan.x = std::clamp(state.mapPan.x, screenW() - span - px(120.0f),
+                                px(120.0f));
+
+    const auto at = [&](int i) {
+        const SectorNode& n = kSectorLayout[static_cast<size_t>(i)];
+        return Vector2{state.mapPan.x + px(n.x),
+                       board.y + board.height * 0.5f + px(n.y - 400.0f) * 0.55f};
     };
 
+    state.levels.begin(kLevelCount);
+    if (IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) {
+        state.levels.move(-1);
+    }
+    if (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) {
+        state.levels.move(1);
+    }
+
+    textCentered("SECTOR MAP", screenW() * 0.5f, screenH() * 0.07f,
+                 sz(theme::kTitle), theme::kInk);
+
+    // The route: solid where the player has been, dashed-dim ahead of them.
+    for (int i = 0; i + 1 < kLevelCount; ++i) {
+        const bool travelled = session.isLevelUnlocked(i + 1);
+        DrawLineEx(at(i), at(i + 1), travelled ? 2.5f : 1.5f,
+                   travelled ? theme::withAlpha(theme::kColdDim, 0.9f)
+                             : theme::withAlpha(theme::kColdDeep, 0.9f));
+    }
+
     Result result;
-    for (int i = 0; i < 3; ++i) {
-        const Rectangle r{box.x + px(theme::kUnit),
-                          box.y + px(theme::kUnit * 6.0f) +
-                              row() * 1.45f * static_cast<float>(i),
-                          box.width - px(theme::kUnit * 2.0f), row() * 1.35f};
-        const bool isFocused = state.levels.isFocused(i);
-        if (hovered(r)) state.levels.index = i;
-
-        if (isFocused) {
-            DrawRectangleRec(r, theme::withAlpha(theme::kCold, 0.10f));
-            DrawRectangleV(Vector2{r.x, r.y}, Vector2{px(3.0f), r.height},
-                           theme::kCold);
-        }
+    for (int i = 0; i < kLevelCount; ++i) {
+        const Vector2 c = at(i);
+        const bool unlocked = session.isLevelUnlocked(i);
         const bool cleared = session.clearCountFor(i) > 0u;
-        text(rows[i].name, r.x + px(theme::kGutter), r.y + px(8.0f),
-             sz(theme::kBody), isFocused ? theme::kInk : theme::kInkDim);
-        text(rows[i].blurb, r.x + px(theme::kGutter), r.y + px(32.0f),
-             sz(theme::kMicro), theme::kInkFaint);
+        const bool current = session.levelIndex() == i;
+        const float r = px(26.0f);
 
-        char stat[80];
-        if (cleared) {
-            std::snprintf(stat, sizeof(stat), "CLEARED x%u",
-                          session.clearCountFor(i));
-            textRight(stat, r.x + r.width - px(theme::kGutter), r.y + px(8.0f),
-                      sz(theme::kSmall), theme::kGood);
-        } else {
-            std::snprintf(stat, sizeof(stat), "power %u", rows[i].power);
-            textRight(stat, r.x + r.width - px(theme::kGutter), r.y + px(8.0f),
-                      sz(theme::kSmall), theme::kInkFaint);
+        const Rectangle hit{c.x - r, c.y - r, r * 2.0f, r * 2.0f};
+        if (CheckCollisionPointRec(mouse, hit) && !state.mapDragging) {
+            state.levels.index = i;
         }
-        std::snprintf(stat, sizeof(stat), "best %u", session.bestKillsFor(i));
-        textRight(stat, r.x + r.width - px(theme::kGutter), r.y + px(32.0f),
-                  sz(theme::kMicro), theme::kInkDim);
+        const bool focused = state.levels.isFocused(i);
 
-        if ((isFocused && (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE))) ||
-            (hovered(r) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))) {
+        // Cleared sectors are filled, open ones are outlined, locked ones are
+        // barely there. Status is readable at a glance without reading a word.
+        Color ink = theme::kInkFaint;
+        if (cleared) ink = theme::kGood;
+        else if (unlocked) ink = theme::kCold;
+
+        if (focused) {
+            DrawCircleV(c, r + px(7.0f), theme::withAlpha(ink, 0.16f));
+            DrawCircleLinesV(c, r + px(7.0f), theme::withAlpha(ink, 0.7f));
+        }
+        if (cleared) {
+            DrawCircleV(c, r, theme::withAlpha(ink, 0.30f));
+        }
+        DrawCircleLinesV(c, r, ink);
+        if (current) DrawCircleLinesV(c, r - px(5.0f), theme::withAlpha(ink, 0.8f));
+
+        char label[8];
+        std::snprintf(label, sizeof(label), "%d", i + 1);
+        textCentered(label, c.x, c.y - static_cast<float>(sz(theme::kBody)) * 0.5f,
+                     sz(theme::kBody), unlocked ? theme::kInk : theme::kInkFaint);
+
+        if (!unlocked) {
+            // A padlock drawn from two rectangles: no glyph, no asset.
+            const float lw = px(9.0f);
+            const float lh = px(7.0f);
+            DrawRectangleV(Vector2{c.x - lw * 0.5f, c.y + r * 0.45f},
+                           Vector2{lw, lh}, theme::kInkFaint);
+            DrawCircleLinesV(Vector2{c.x, c.y + r * 0.45f}, lw * 0.42f,
+                             theme::kInkFaint);
+        }
+
+        textCentered(ls::levelName(i), c.x, c.y + r + px(8.0f),
+                     sz(theme::kMicro),
+                     unlocked ? theme::kInkDim : theme::kInkFaint);
+
+        if (unlocked && CheckCollisionPointRec(mouse, hit) &&
+            IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && !state.mapDragging) {
             result = {Action::SelectLevel, i};
         }
     }
 
-    text("esc to go back", box.x + px(theme::kGutter),
-         box.y + box.height - px(theme::kUnit * 3.0f), sz(theme::kMicro),
-         theme::kInkFaint);
-    if (closeButton(box) || pressedBack()) return {Action::Back, 0};
+    // The detail card for whatever is focused, pinned below the board so it
+    // does not move as the map pans.
+    const int sel = std::clamp(state.levels.index, 0, kLevelCount - 1);
+    const Rectangle card = column(660.0f, board.y + board.height + px(12.0f),
+                                  row() * 2.3f);
+    panel(card);
+    char line[160];
+    std::snprintf(line, sizeof(line), "SECTOR %d  ·  %s", sel + 1,
+                  ls::levelName(sel));
+    text(line, card.x + px(theme::kGutter), card.y + px(12.0f),
+         sz(theme::kBody), theme::kInk);
+    text(kSectorBlurb[static_cast<size_t>(sel)], card.x + px(theme::kGutter),
+         card.y + px(38.0f), sz(theme::kMicro), theme::kInkFaint);
+
+    if (session.isLevelUnlocked(sel)) {
+        std::snprintf(line, sizeof(line), "power %u  ·  best %u  ·  cleared %ux",
+                      ls::levelRecommendedPower(sel), session.bestKillsFor(sel),
+                      session.clearCountFor(sel));
+        text(line, card.x + px(theme::kGutter), card.y + px(62.0f),
+             sz(theme::kMicro), theme::kInkDim);
+        textRight("ENTER  deploy", card.x + card.width - px(theme::kGutter),
+                  card.y + px(38.0f), sz(theme::kSmall), theme::kGood);
+    } else {
+        std::snprintf(line, sizeof(line), "locked  ·  hold sector %d to open it",
+                      sel);
+        text(line, card.x + px(theme::kGutter), card.y + px(62.0f),
+             sz(theme::kMicro), theme::kDanger);
+    }
+
+    textCentered("drag or scroll to pan  ·  arrows to choose  ·  esc to go back",
+                 screenW() * 0.5f, screenH() - px(40.0f), sz(theme::kMicro),
+                 theme::kInkFaint);
+
+    if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) &&
+        session.isLevelUnlocked(sel)) {
+        result = {Action::SelectLevel, sel};
+    }
+    if (pressedBack()) return {Action::Back, 0};
     return result;
 }
 
@@ -804,7 +927,12 @@ Result drawReport(State& state, const Session& session) {
     textCentered(line, cx, y + 44.0f, sz(theme::kMicro), theme::kInkDim);
     y += 74.0f;
 
-    if (p.newBest) {
+    if (session.canAdvance()) {
+        std::snprintf(line, sizeof(line), "SECTOR %d UNLOCKED   ·   %s",
+                      session.levelIndex() + 2,
+                      ls::levelName(session.levelIndex() + 1));
+        textCentered(line, cx, y, sz(theme::kBody), theme::kGood);
+    } else if (p.newBest) {
         std::snprintf(line, sizeof(line), "NEW BEST   ·   was %u",
                       r.previousBest);
         textCentered(line, cx, y, sz(theme::kBody), theme::kGood);
@@ -886,24 +1014,50 @@ Result drawReport(State& state, const Session& session) {
     const float footer = box.y + box.height - px(56.0f);
     rule(box.x + px(theme::kGutter), footer - 12.0f,
          box.width - px(theme::kGutter) * 2.0f, 0.7f);
-    state.report.begin(3);
+    // Winning opens the next sector, and the report says so instead of
+    // leaving the player to go looking. RETRY keeps its position either way,
+    // because it is the path the whole game is optimised around (GDD 13.1).
+    const bool advance = session.canAdvance();
+    const int buttons = advance ? 4 : 3;
+    state.report.begin(buttons);
     navigate(state.report);
 
     Result result;
-    const float bw = (box.width - px(theme::kGutter) * 2.0f) / 3.0f;
-    if (button(Rectangle{box.x + px(theme::kGutter), footer, bw, 40.0f},
-               "R  RETRY", state.report, 0)) {
+    const float bw = (box.width - px(theme::kGutter) * 2.0f) /
+                     static_cast<float>(buttons);
+    const auto at = [&](int i) {
+        return Rectangle{box.x + px(theme::kGutter) + bw * static_cast<float>(i),
+                         footer, bw, px(40.0f)};
+    };
+
+    int item = 0;
+    if (advance) {
+        char label[64];
+        std::snprintf(label, sizeof(label), "N  SECTOR %d",
+                      session.levelIndex() + 2);
+        // Drawn as the one thing on the screen with a filled frame.
+        DrawRectangleRec(at(item), theme::withAlpha(theme::kGood, 0.16f));
+        DrawRectangleLinesEx(at(item), 1.5f, theme::kGood);
+        if (button(at(item), label, state.report, item)) {
+            result = {Action::Advance, 0};
+        }
+        ++item;
+    }
+    if (button(at(item), "R  RETRY", state.report, item)) {
         result = {Action::Retry, 0};
     }
-    if (button(Rectangle{box.x + px(theme::kGutter) + bw, footer, bw, 40.0f},
-               "U  UPGRADE", state.report, 1)) {
+    ++item;
+    if (button(at(item), "U  UPGRADE", state.report, item)) {
         result = {Action::OpenTree, 0};
     }
-    if (button(Rectangle{box.x + px(theme::kGutter) + bw * 2.0f, footer, bw, 40.0f},
-               "P  PREPARE", state.report, 2)) {
+    ++item;
+    if (button(at(item), "P  PREPARE", state.report, item)) {
         result = {Action::BackToPrepare, 0};
     }
 
+    if (advance && (IsKeyPressed(KEY_N) || IsKeyPressed(KEY_ENTER))) {
+        result = {Action::Advance, 0};
+    }
     if (IsKeyPressed(KEY_R)) result = {Action::Retry, 0};
     if (IsKeyPressed(KEY_U)) result = {Action::OpenTree, 0};
     if (IsKeyPressed(KEY_P)) result = {Action::BackToPrepare, 0};

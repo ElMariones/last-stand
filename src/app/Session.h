@@ -88,6 +88,14 @@ public:
     void resume();
     void abandonBattle();          // Pause -> Menu, no payout
     void selectLevel(int idx);
+    // A sector opens when the one before it has been held at least once.
+    // Sector 1 is always open.
+    bool isLevelUnlocked(int idx) const;
+    int  furthestUnlockedLevel() const;
+    // True when the battle just won opens something new — the report turns
+    // that into its primary action rather than leaving the player to find it.
+    bool canAdvance() const;
+    void advanceLevel();
 
     // --- Prepare: turret placement -----------------------------------------
     TurretKind selectedKind() const { return selectedKind_; }

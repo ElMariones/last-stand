@@ -29,6 +29,7 @@ enum class Action {
     ClearHardpoints,
     Retry,
     Restart,
+    Advance,
     OpenTree,
     BackToPrepare,
     Buy,             // value = node index
@@ -66,6 +67,11 @@ struct State {
     // Which placed turret the mouse is dragging, or -1. Owned here because it
     // spans frames and the screens themselves are stateless.
     int   dragIndex = -1;
+    // The sector map pans by dragging; this is its scroll offset and grab.
+    Vec2  mapPan{0.0f, 0.0f};
+    Vec2  mapGrab{0.0f, 0.0f};
+    bool  mapDragging = false;
+    bool  mapCentred = false;
     WidgetFeedback feedback;
 };
 

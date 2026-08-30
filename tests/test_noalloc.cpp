@@ -135,7 +135,9 @@ TEST_CASE("a burning, exploding battle still allocates nothing") {
 TEST_CASE("Session drives a battle without allocating, fx and abilities included") {
     ls::Session session{nullptr};
     session.goMenu();
-    session.selectLevel(2);          // Level 3: tanks, runners, the lot
+    // Sector 1: the later ones are locked until they are earned, and the
+    // World-driven cases above already cover the tanks-and-flamethrowers mix.
+    session.selectLevel(0);
     session.startBattle();
     REQUIRE(session.phase() == ls::Phase::Battle);
 

@@ -161,9 +161,9 @@ TEST_CASE("the screen graph is reversible everywhere except battle to report") {
 
     s.goLevelSelect();
     CHECK(s.phase() == Phase::LevelSelect);
-    s.selectLevel(1);
+    s.selectLevel(0);
     CHECK(s.phase() == Phase::Prepare);
-    CHECK(s.levelIndex() == 1);
+    CHECK(s.levelIndex() == 0);
 
     s.startBattle();
     CHECK(s.phase() == Phase::Battle);
@@ -536,4 +536,93 @@ TEST_CASE("lifetime stats accumulate across runs") {
     CHECK(s.stats().kills == firstKills * 2u);
     CHECK(s.stats().winRate() >= 0.0f);
     CHECK(s.stats().winRate() <= 1.0f);
+}
+
+// ---------------------------------------------------- campaign gating -----
+
+TEST_CASE("only the first sector is open to a new commander") {
+    const Session s{nullptr};
+    CHECK(s.isLevelUnlocked(0));
+    for (int i = 1; i < ls::kLevelCount; ++i) CHECK_FALSE(s.isLevelUnlocked(i));
+    CHECK(s.furthestUnlockedLevel() == 0);
+}
+
+TEST_CASE("a locked sector cannot be entered, from anywhere") {
+    Session s = freshSession();
+    s.goLevelSelect();
+    s.selectLevel(4);
+    CHECK(s.levelIndex() == 0);          // refused, silently and safely
+    CHECK(s.phase() == Phase::LevelSelect);
+}
+
+TEST_CASE("holding a sector opens the next one and offers to advance") {
+    Session s = freshSession();
+    CHECK_FALSE(s.canAdvance());
+
+    // Grind sector 1 until it falls.
+    bool won = false;
+    for (int run = 0; run < 14 && !won; ++run) {
+        if (s.phase() == Phase::Prepare) s.startBattle();
+        else s.retry();
+        pump(s);
+        won = s.result().victory;
+        if (!won) {
+            s.openTree();
+            // Spend on whatever is cheapest so the runs actually improve.
+            for (int i = 0; i < 4; ++i) {
+                if (s.tree().canAfford(ls::NodeId::Damage, s.scrap())) {
+                    s.buy(ls::NodeId::Damage);
+                } else if (s.tree().canAfford(ls::NodeId::Range, s.scrap())) {
+                    s.buy(ls::NodeId::Range);
+                }
+            }
+            s.backToPrepare();
+            s.autoDeploy();
+        }
+    }
+    REQUIRE(won);
+
+    CHECK(s.isLevelUnlocked(1));
+    CHECK(s.furthestUnlockedLevel() == 1);
+    CHECK(s.canAdvance());
+
+    s.advanceLevel();
+    CHECK(s.levelIndex() == 1);
+    CHECK(s.phase() == Phase::Prepare);
+    // ...and sector 3 is still shut.
+    CHECK_FALSE(s.isLevelUnlocked(2));
+}
+
+TEST_CASE("a lost battle offers no advance") {
+    Session s = freshSession();
+    REQUIRE(playOut(s) == Phase::Report);
+    REQUIRE_FALSE(s.result().victory);
+    CHECK_FALSE(s.canAdvance());
+    s.advanceLevel();
+    CHECK(s.levelIndex() == 0);
+}
+
+TEST_CASE("NEW GAME re-locks the campaign") {
+    Session s = freshSession();
+    // Fake a clear the only honest way available: play until one happens.
+    bool won = false;
+    for (int run = 0; run < 14 && !won; ++run) {
+        if (s.phase() == Phase::Prepare) s.startBattle();
+        else s.retry();
+        pump(s);
+        won = s.result().victory;
+        if (!won) {
+            s.openTree();
+            if (s.tree().canAfford(ls::NodeId::Damage, s.scrap())) {
+                s.buy(ls::NodeId::Damage);
+            }
+            s.backToPrepare();
+        }
+    }
+    REQUIRE(won);
+    REQUIRE(s.isLevelUnlocked(1));
+
+    s.newGame();
+    CHECK_FALSE(s.isLevelUnlocked(1));
+    CHECK(s.levelIndex() == 0);
 }

@@ -479,6 +479,7 @@ int main(int argc, char** argv) {
                 ui.dragIndex = -1;
                 break;
             case ls::ui::Action::Retry: session.retry(); break;
+            case ls::ui::Action::Advance: session.advanceLevel(); break;
             case ls::ui::Action::Restart:
                 session.resume();
                 session.retry();

@@ -273,8 +273,34 @@ void Session::syncWorldTurrets() {
     }
 }
 
+bool Session::isLevelUnlocked(int idx) const {
+    if (idx <= 0) return true;
+    if (idx >= kLevelCount) return false;
+    return clearCountFor(idx - 1) > 0u;
+}
+
+int Session::furthestUnlockedLevel() const {
+    int furthest = 0;
+    for (int i = 1; i < kLevelCount; ++i) {
+        if (isLevelUnlocked(i)) furthest = i;
+    }
+    return furthest;
+}
+
+bool Session::canAdvance() const {
+    return hasResult_ && result_.victory && levelIndex_ + 1 < kLevelCount &&
+           isLevelUnlocked(levelIndex_ + 1);
+}
+
+void Session::advanceLevel() {
+    if (!canAdvance()) return;
+    selectLevel(levelIndex_ + 1);
+}
+
 void Session::selectLevel(int idx) {
     idx = std::clamp(idx, 0, kLevelCount - 1);
+    // Locked sectors are not reachable, from the map or from anywhere else.
+    if (!isLevelUnlocked(idx)) return;
     levelIndex_ = idx;
     level_ = makeLevelByIndex(idx);
     defaultLoadout();
