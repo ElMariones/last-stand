@@ -385,3 +385,158 @@ TEST_CASE("a fresh save has nothing to continue") {
     const Session s{nullptr};
     CHECK_FALSE(s.hasProgress());
 }
+
+// ------------------------------------------------------- the arsenal ------
+
+TEST_CASE("a new commander owns four machine guns and nothing else") {
+    Session s = freshSession();
+    CHECK(s.owned(ls::TurretKind::MachineGun) == 4u);
+    CHECK(s.owned(ls::TurretKind::Cannon) == 0u);
+    CHECK(s.owned(ls::TurretKind::Flamethrower) == 0u);
+    // ...and they open already deployed, so a first-timer sees a defence.
+    CHECK(s.turretCount() == 4);
+    CHECK(s.available(ls::TurretKind::MachineGun) == 0u);
+}
+
+TEST_CASE("turrets go anywhere walkable, not only on the emplacements") {
+    Session s = freshSession();
+    s.clearLoadout();
+    REQUIRE(s.available(ls::TurretKind::MachineGun) == 4u);
+
+    // A patch of open ground nowhere near an authored emplacement.
+    const ls::Vec2 open = s.level().map.grid.cellCenter(40, 30);
+    REQUIRE(s.canPlaceAt(open));
+    CHECK(s.placeTurretAt(open));
+    CHECK(s.turretCount() == 1);
+    CHECK(s.available(ls::TurretKind::MachineGun) == 3u);
+}
+
+TEST_CASE("placement refuses walls, the base and other turrets") {
+    Session s = freshSession();
+    s.clearLoadout();
+
+    // Inside one of the wall blocks.
+    CHECK(s.placementAt(s.level().map.grid.cellCenter(25, 8)) ==
+          Session::Placement::OnWall);
+    // On top of the base.
+    CHECK(s.placementAt(s.level().map.baseCenter()) ==
+          Session::Placement::TooCloseToBase);
+    // Off the map entirely.
+    CHECK(s.placementAt(ls::Vec2{-50.0f, -50.0f}) ==
+          Session::Placement::OffMap);
+
+    const ls::Vec2 spot = s.level().map.grid.cellCenter(40, 30);
+    REQUIRE(s.placeTurretAt(spot));
+    CHECK(s.placementAt(ls::Vec2{spot.x + 4.0f, spot.y}) ==
+          Session::Placement::TooCloseToTurret);
+}
+
+TEST_CASE("you cannot deploy what you do not own") {
+    Session s = freshSession();
+    REQUIRE(s.available(ls::TurretKind::MachineGun) == 0u);   // all deployed
+    const ls::Vec2 open = s.level().map.grid.cellCenter(40, 30);
+    CHECK_FALSE(s.placeTurretAt(open));
+    CHECK(s.turretCount() == 4);
+}
+
+TEST_CASE("dragging moves a turret, and an illegal drop is refused") {
+    Session s = freshSession();
+    const ls::Vec2 from = s.loadout().front().position;
+    const ls::Vec2 to = s.level().map.grid.cellCenter(40, 30);
+
+    REQUIRE(s.moveTurret(0, to));
+    CHECK(s.loadout().front().position.x == doctest::Approx(to.x));
+
+    // Into a wall: refused, and the turret stays where it was.
+    CHECK_FALSE(s.moveTurret(0, s.level().map.grid.cellCenter(25, 8)));
+    CHECK(s.loadout().front().position.x == doctest::Approx(to.x));
+    CHECK(from.x != doctest::Approx(to.x));
+}
+
+TEST_CASE("recalling a turret puts it back in the crate") {
+    Session s = freshSession();
+    s.recallTurret(0);
+    CHECK(s.turretCount() == 3);
+    CHECK(s.available(ls::TurretKind::MachineGun) == 1u);
+}
+
+TEST_CASE("buying a turret costs Scrap and rises in price") {
+    Session s = freshSession();
+    REQUIRE(playOut(s) == Phase::Report);
+    s.backToPrepare();
+
+    // Give the run enough Scrap by grinding a few more.
+    for (int i = 0; i < 12 && !s.canAffordTurret(ls::TurretKind::MachineGun); ++i) {
+        s.startBattle();
+        pump(s);
+        s.backToPrepare();
+    }
+    REQUIRE(s.canAffordTurret(ls::TurretKind::MachineGun));
+
+    const uint32_t price = s.turretPrice(ls::TurretKind::MachineGun);
+    const uint32_t scrapBefore = s.scrap();
+    REQUIRE(s.buyTurret(ls::TurretKind::MachineGun));
+
+    CHECK(s.owned(ls::TurretKind::MachineGun) == 5u);
+    CHECK(s.available(ls::TurretKind::MachineGun) == 1u);
+    CHECK(s.scrap() == scrapBefore - price);
+    CHECK(s.turretPrice(ls::TurretKind::MachineGun) > price);
+    CHECK(s.stats().turretsBought == 1u);
+}
+
+TEST_CASE("a locked kind cannot be bought") {
+    Session s = freshSession();
+    CHECK_FALSE(s.canAffordTurret(ls::TurretKind::Cannon));
+    CHECK_FALSE(s.buyTurret(ls::TurretKind::Cannon));
+    CHECK(s.owned(ls::TurretKind::Cannon) == 0u);
+}
+
+TEST_CASE("auto-deploy puts the whole reserve on the field") {
+    Session s = freshSession();
+    s.clearLoadout();
+    REQUIRE(s.turretCount() == 0);
+
+    s.autoDeploy();
+    CHECK(s.turretCount() == 4);
+    CHECK(s.available(ls::TurretKind::MachineGun) == 0u);
+    // Every one of them landed somewhere legal.
+    for (int i = 0; i < static_cast<int>(s.loadout().size()); ++i) {
+        CHECK(s.placementAt(s.loadout()[static_cast<size_t>(i)].position, i) ==
+              Session::Placement::Ok);
+    }
+}
+
+TEST_CASE("the speed control runs 1 to 4 and wraps") {
+    Session s = freshSession();
+    CHECK(s.timeScale() == 1);
+    for (int expected : {2, 3, 4, 1}) {
+        s.cycleTimeScale();
+        CHECK(s.timeScale() == expected);
+    }
+    s.setTimeScale(3);
+    CHECK(s.timeScale() == 3);
+    s.setTimeScale(99);
+    CHECK(s.timeScale() == 4);
+    s.setTimeScale(-2);
+    CHECK(s.timeScale() == 1);
+}
+
+TEST_CASE("lifetime stats accumulate across runs") {
+    Session s = freshSession();
+    CHECK(s.stats().runs == 0u);
+
+    REQUIRE(playOut(s) == Phase::Report);
+    const uint32_t firstKills = s.result().kills;
+    CHECK(s.stats().runs == 1u);
+    CHECK(s.stats().kills == firstKills);
+    CHECK(s.stats().bestRunKills == firstKills);
+    CHECK(s.stats().scrapEarned == s.payout().scrap);
+    CHECK(s.stats().secondsPlayed > 0u);
+
+    s.retry();
+    pump(s);
+    CHECK(s.stats().runs == 2u);
+    CHECK(s.stats().kills == firstKills * 2u);
+    CHECK(s.stats().winRate() >= 0.0f);
+    CHECK(s.stats().winRate() <= 1.0f);
+}

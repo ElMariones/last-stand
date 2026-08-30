@@ -108,7 +108,7 @@ Result drawTitle(State& state, const Session& session, float dt) {
 Result drawMenu(State& state, const Session& session) {
     scrim(0.82f);
     const bool resumable = session.hasProgress();
-    const int itemCount = resumable ? 4 : 3;
+    const int itemCount = resumable ? 5 : 3;
     state.menu.begin(itemCount);
     navigate(state.menu);
 
@@ -166,6 +166,12 @@ Result drawMenu(State& state, const Session& session) {
     }
     ++item;
 
+    if (resumable) {
+        if (button(at(item), "SERVICE RECORD", state.menu, item)) {
+            result = {Action::Stats, 0};
+        }
+        ++item;
+    }
     if (button(at(item), "OPTIONS", state.menu, item)) {
         result = {Action::Options, 0};
     }
@@ -257,9 +263,6 @@ Result drawOptions(State& state, Session& session) {
     changed |= toggle(at(12), "PERFORMANCE OVERLAY", s.debugOverlay,
                       state.options, 12);
 
-    // DEFAULT SPEED only means anything at 1, 2 or 4; snap 3 to the nearest.
-    if (s.defaultTimeScale == 3) s.defaultTimeScale = 4;
-
     text("esc or the X to go back  ·  changes save immediately",
          box.x + px(theme::kGutter),
          box.y + box.height - px(theme::kUnit * 3.0f), sz(theme::kMicro),
@@ -336,54 +339,150 @@ Result drawLevelSelect(State& state, const Session& session) {
     return result;
 }
 
-// --------------------------------------------------------------- prepare ---
+// ----------------------------------------------------------------- stats ---
 
-// The hardpoint markers. Empty slots are dashed rings with a number; occupied
-// ones get a filled ring. Without these the player has no way to know how many
-// positions they have or which are free — and clicking felt like nothing was
-// happening, because every slot arrived pre-filled with the only turret they
-// had unlocked.
-void drawHardpointOverlay(State& state, const Session& session) {
-    const Vector2 mouse = GetMousePosition();
-    state.hoveredHardpoint =
-        session.hardpointNear(Vec2{mouse.x, mouse.y}, 28.0f);
+Result drawStats(State& state, const Session& session) {
+    scrim(0.88f);
+    state.stats.begin(1);
 
-    char badge[8];
-    for (int i = 0; i < session.hardpointCount(); ++i) {
-        const Vec2 hp = session.hardpointAt(i);
-        const Vector2 c{hp.x, hp.y};
-        const bool occupied = session.turretAtHardpoint(i) >= 0;
-        const bool hot = state.hoveredHardpoint == i;
+    const ls::Stats& st = session.stats();
+    const Rectangle box = column(640.0f, screenH() * 0.12f, row() * 12.0f);
+    panelTitled(box, "SERVICE RECORD");
 
-        const Color ring = occupied ? theme::kCold
-                                    : (hot ? theme::kInk : theme::kInkFaint);
-        DrawCircleLinesV(c, 20.0f, theme::withAlpha(ring, hot ? 1.0f : 0.75f));
-        if (hot) DrawCircleLinesV(c, 24.0f, theme::withAlpha(ring, 0.4f));
+    float y = box.y + px(theme::kUnit * 7.0f);
+    char value[64];
 
-        if (!occupied) {
-            // An empty slot reads as an invitation: a plus, not a blank.
-            DrawLineEx(Vector2{c.x - 6.0f, c.y}, Vector2{c.x + 6.0f, c.y}, 2.0f,
-                       ring);
-            DrawLineEx(Vector2{c.x, c.y - 6.0f}, Vector2{c.x, c.y + 6.0f}, 2.0f,
-                       ring);
-        }
-        std::snprintf(badge, sizeof(badge), "%d", i + 1);
-        DrawText(badge, static_cast<int>(c.x - 22.0f),
-                 static_cast<int>(c.y - 30.0f), theme::kMicro,
-                 theme::withAlpha(ring, 0.9f));
+    // Two columns: the label reads as a question, the number answers it.
+    const auto line2 = [&](const char* label, const char* v, Color ink) {
+        text(label, box.x + px(theme::kGutter), y, sz(theme::kSmall),
+             theme::kInkDim);
+        textRight(v, box.x + box.width - px(theme::kGutter), y,
+                  sz(theme::kSmall), ink);
+        y += px(30.0f);
+    };
+    const auto section = [&](const char* label) {
+        y += px(6.0f);
+        text(label, box.x + px(theme::kGutter), y, sz(theme::kMicro),
+             theme::kCold);
+        y += px(24.0f);
+    };
+
+    section("CAREER");
+    std::snprintf(value, sizeof(value), "%u", st.runs);
+    line2("Runs", value, theme::kInk);
+    std::snprintf(value, sizeof(value), "%u  (%.0f%%)", st.victories,
+                  static_cast<double>(st.winRate() * 100.0f));
+    line2("Sectors held", value, st.victories > 0u ? theme::kGood : theme::kInkDim);
+    const uint32_t mins = st.secondsPlayed / 60u;
+    std::snprintf(value, sizeof(value), "%uh %02um", mins / 60u, mins % 60u);
+    line2("Time in the field", value, theme::kInk);
+
+    section("DESTRUCTION");
+    std::snprintf(value, sizeof(value), "%u", st.kills);
+    line2("Total kills", value, theme::kInk);
+    std::snprintf(value, sizeof(value), "%u", st.bestRunKills);
+    line2("Best single run", value, theme::kScrap);
+    if (st.runs > 0u) {
+        std::snprintf(value, sizeof(value), "%u",
+                      st.kills / std::max(1u, st.runs));
+        line2("Average per run", value, theme::kInkDim);
     }
 
-    if (state.hoveredHardpoint >= 0) {
-        const bool occupied =
-            session.turretAtHardpoint(state.hoveredHardpoint) >= 0;
-        const char* hint = occupied ? "click to replace  ·  right-click to clear"
-                                    : "click to deploy";
-        DrawText(hint, static_cast<int>(mouse.x) + 18,
-                 static_cast<int>(mouse.y) + 8, theme::kMicro, theme::kInkDim);
+    section("LOGISTICS");
+    std::snprintf(value, sizeof(value), "%u", st.scrapEarned);
+    line2("Scrap earned", value, theme::kScrap);
+    std::snprintf(value, sizeof(value), "%u", st.nodesBought);
+    line2("Upgrades bought", value, theme::kInkDim);
+    std::snprintf(value, sizeof(value), "%u", st.turretsBought);
+    line2("Turrets bought", value, theme::kInkDim);
+
+    if (st.runs == 0u) {
+        textCentered("nothing to report yet", box.x + box.width * 0.5f,
+                     box.y + box.height - px(46.0f), sz(theme::kMicro),
+                     theme::kInkFaint);
     }
+
+    if (closeButton(box) || pressedBack()) return {Action::Back, 0};
+    return {};
 }
 
-Result drawPrepareHud(State& state, const Session& session) {
+// --------------------------------------------------------------- prepare ---
+
+// The placement layer: suggested emplacements, the range ring of whatever the
+// cursor is on, and a ghost of what a click would put down and whether it can
+// go there. Turrets are not bound to the emplacements — they are a hint, not
+// a grid — so the overlay's job is to make free placement legible rather than
+// to mark slots.
+void drawHardpointOverlay(State& state, const Session& session,
+                          const Viewport& viewport) {
+    const Vector2 mouseScreen = GetMousePosition();
+    const Vec2 mouse =
+        viewport.screenToWorld(Vec2{mouseScreen.x, mouseScreen.y});
+    state.hoveredHardpoint = session.hardpointNear(mouse, 24.0f);
+
+    // Suggested emplacements: faint, and only while they are still free.
+    for (int i = 0; i < session.hardpointCount(); ++i) {
+        if (session.turretAtHardpoint(i) >= 0) continue;
+        const Vec2 hp = viewport.worldToScreen(session.hardpointAt(i));
+        const float r = viewport.scaled(18.0f);
+        const Color ring = theme::withAlpha(theme::kInkFaint, 0.55f);
+        DrawCircleLinesV(Vector2{hp.x, hp.y}, r, ring);
+        const float t = r * 0.28f;
+        DrawLineEx(Vector2{hp.x - t, hp.y}, Vector2{hp.x + t, hp.y}, 1.5f, ring);
+        DrawLineEx(Vector2{hp.x, hp.y - t}, Vector2{hp.x, hp.y + t}, 1.5f, ring);
+    }
+
+    // Every placed turret gets a ring, and the one under the cursor shows the
+    // range it actually covers — the number that makes positioning a decision.
+    const int hoverTurret = session.turretIndexAt(mouse, 26.0f);
+    for (size_t i = 0; i < session.loadout().size(); ++i) {
+        const Turret& t = session.loadout()[i];
+        const Vec2 p = viewport.worldToScreen(t.position);
+        const bool hot = (static_cast<int>(i) == hoverTurret) ||
+                         (static_cast<int>(i) == state.dragIndex);
+        DrawCircleLinesV(Vector2{p.x, p.y}, viewport.scaled(15.0f),
+                         theme::withAlpha(theme::kCold, hot ? 1.0f : 0.5f));
+        if (hot) {
+            DrawCircleLinesV(Vector2{p.x, p.y}, viewport.scaled(t.range),
+                             theme::withAlpha(theme::kCold, 0.35f));
+        }
+    }
+
+    // The ghost: what a click would deploy, and whether it is allowed to.
+    const bool dragging = state.dragIndex >= 0;
+    const bool hasSpare = session.available(session.selectedKind()) > 0u;
+    if (dragging || (hoverTurret < 0 && hasSpare)) {
+        const bool ok = session.canPlaceAt(mouse, state.dragIndex);
+        const Color tint = ok ? theme::kGood : theme::kDanger;
+        const Vec2 p = viewport.worldToScreen(mouse);
+        DrawCircleLinesV(Vector2{p.x, p.y}, viewport.scaled(15.0f),
+                         theme::withAlpha(tint, 0.9f));
+        const float range = dragging
+                                ? session.loadout()[static_cast<size_t>(
+                                      state.dragIndex)].range
+                                : 160.0f;
+        DrawCircleLinesV(Vector2{p.x, p.y}, viewport.scaled(range),
+                         theme::withAlpha(tint, 0.25f));
+    }
+
+    const char* hint = nullptr;
+    if (dragging) {
+        hint = session.canPlaceAt(mouse, state.dragIndex) ? "release to place"
+                                                          : "cannot go there";
+    } else if (hoverTurret >= 0) {
+        hint = "drag to move  ·  right-click to recall";
+    } else if (hasSpare) {
+        hint = session.canPlaceAt(mouse) ? "click to deploy" : "cannot go there";
+    } else {
+        hint = "no spare turrets - buy one below";
+    }
+    DrawText(hint, static_cast<int>(mouseScreen.x) + 18,
+             static_cast<int>(mouseScreen.y) + 8, sz(theme::kMicro),
+             theme::kInkDim);
+}
+
+Result drawPrepareHud(State& state, const Session& session,
+                      const Viewport& viewport) {
     const float barH = px(104.0f);
     const Rectangle bar{0.0f, screenH() - barH, screenW(), barH};
     DrawRectangleRec(bar, theme::withAlpha(Color{12, 11, 14, 255}, 0.95f));
@@ -399,17 +498,16 @@ Result drawPrepareHud(State& state, const Session& session) {
     text(line, px(theme::kGutter), bar.y + px(38.0f), sz(theme::kMicro),
          theme::kInkDim);
 
-    // The number the player was missing: how many of their positions are
-    // manned, and how many exist at all.
-    const int placed = session.turretCount();
-    const int slots = session.hardpointCount();
-    std::snprintf(line, sizeof(line), "%d / %d DEPLOYED", placed, slots);
+    // The arsenal, not a slot count: how many of each kind you own and how
+    // many are still in the crate.
+    const int deployed = session.turretCount();
+    std::snprintf(line, sizeof(line), "%d DEPLOYED  ·  %u in reserve", deployed,
+                  session.available(TurretKind::MachineGun) +
+                      session.available(TurretKind::Cannon) +
+                      session.available(TurretKind::Flamethrower));
     text(line, px(theme::kGutter), bar.y + px(62.0f), sz(theme::kSmall),
-         placed == 0 ? theme::kDanger
-                     : (placed < slots ? theme::kScrap : theme::kGood));
+         deployed == 0 ? theme::kDanger : theme::kGood);
 
-    // Turret picker: all three kinds always visible, locked ones dimmed, so
-    // the player can see what the tree is for.
     struct Kind { TurretKind kind; const char* name; const char* stat; };
     const Kind kinds[3] = {
         {TurretKind::MachineGun,   "1 MACHINE GUN", "fast, single target"},
@@ -417,26 +515,58 @@ Result drawPrepareHud(State& state, const Session& session) {
         {TurretKind::Flamethrower, "3 FLAMETHROWER","cone, burns over time"},
     };
     Result result;
-    float x = screenW() * 0.30f;
+    float x = screenW() * 0.26f;
     for (const Kind& k : kinds) {
         const bool unlocked = session.isKindUnlocked(k.kind);
         const bool selected = session.selectedKind() == k.kind;
-        const Rectangle r{x, bar.y + px(14.0f), px(196.0f), px(52.0f)};
+        const uint32_t spare = session.available(k.kind);
+        const Rectangle r{x, bar.y + px(10.0f), px(210.0f), px(60.0f)};
         DrawRectangleRec(r, theme::withAlpha(Color{20, 19, 23, 255},
                                              selected ? 1.0f : 0.55f));
         DrawRectangleLinesEx(r, 1.0f,
                              selected ? theme::kCold
                                       : theme::withAlpha(theme::kColdDeep, 0.9f));
-        text(k.name, r.x + px(10.0f), r.y + px(8.0f), sz(theme::kMicro),
+        text(k.name, r.x + px(10.0f), r.y + px(6.0f), sz(theme::kMicro),
              !unlocked ? theme::kInkFaint
                        : (selected ? theme::kInk : theme::kInkDim));
-        text(unlocked ? k.stat : "LOCKED - buy it in the tree",
-             r.x + px(10.0f), r.y + px(28.0f), sz(theme::kMicro),
-             unlocked ? theme::kInkFaint : theme::kInkFaint);
-        if (unlocked && hovered(r) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+
+        if (unlocked) {
+            char count[48];
+            std::snprintf(count, sizeof(count), "%u ready / %u owned", spare,
+                          session.owned(k.kind));
+            text(count, r.x + px(10.0f), r.y + px(24.0f), sz(theme::kMicro),
+                 spare > 0u ? theme::kGood : theme::kInkFaint);
+
+            // Buying is right here rather than in the tree: the decision
+            // "another gun or a better gun" should be one screen, not two.
+            const Rectangle buy{r.x + r.width - px(78.0f), r.y + px(34.0f),
+                                px(70.0f), px(20.0f)};
+            const bool afford = session.canAffordTurret(k.kind);
+            DrawRectangleLinesEx(buy, 1.0f,
+                                 afford ? theme::kScrap
+                                        : theme::withAlpha(theme::kColdDeep, 0.9f));
+            char price[32];
+            std::snprintf(price, sizeof(price), "BUY %u",
+                          session.turretPrice(k.kind));
+            textCentered(price, buy.x + buy.width * 0.5f, buy.y + px(3.0f),
+                         sz(theme::kMicro),
+                         afford ? theme::kScrap : theme::kInkFaint);
+            if (afford && hovered(buy) &&
+                IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                result = {Action::BuyTurret, static_cast<int>(k.kind)};
+            }
+            text(k.stat, r.x + px(10.0f), r.y + px(40.0f), sz(theme::kMicro),
+                 theme::kInkFaint);
+        } else {
+            text("LOCKED - unlock it in the tree", r.x + px(10.0f),
+                 r.y + px(26.0f), sz(theme::kMicro), theme::kInkFaint);
+        }
+
+        if (unlocked && hovered(r) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+            result.action == Action::None) {
             result = {Action::SelectKind, static_cast<int>(k.kind)};
         }
-        x += px(204.0f);
+        x += px(218.0f);
     }
 
     // DEPLOY is always available, even with empty slots — the player is
@@ -444,7 +574,7 @@ Result drawPrepareHud(State& state, const Session& session) {
     // worse than letting them find out.
     const Rectangle deploy{screenW() - px(200.0f), bar.y + px(14.0f),
                            px(180.0f), px(40.0f)};
-    const bool ready = placed > 0;
+    const bool ready = deployed > 0;
     DrawRectangleRec(deploy, theme::withAlpha(ready ? theme::kColdDeep
                                                     : Color{40, 24, 24, 255},
                                               0.9f));
@@ -458,16 +588,18 @@ Result drawPrepareHud(State& state, const Session& session) {
         result = {Action::StartBattle, 0};
     }
 
-    textRight("F fill  ·  C clear  ·  M targeting  ·  L sectors  ·  esc menu",
-              screenW() - px(theme::kGutter), bar.y + px(66.0f),
+    textRight("drag to move  ·  F auto-deploy  ·  C recall all  ·  M targeting",
+              screenW() - px(theme::kGutter), bar.y + px(58.0f),
               sz(theme::kMicro), theme::kInkFaint);
+    textRight("L sectors  ·  esc menu", screenW() - px(theme::kGutter),
+              bar.y + px(76.0f), sz(theme::kMicro), theme::kInkFaint);
 
-    drawHardpointOverlay(state, session);
+    drawHardpointOverlay(state, session, viewport);
 
     if (IsKeyPressed(KEY_ONE)) return {Action::SelectKind, 0};
     if (IsKeyPressed(KEY_TWO)) return {Action::SelectKind, 1};
     if (IsKeyPressed(KEY_THREE)) return {Action::SelectKind, 2};
-    if (IsKeyPressed(KEY_F)) return {Action::FillHardpoints, 0};
+    if (IsKeyPressed(KEY_F)) return {Action::FillHardpoints, 0};   // auto-deploy
     if (IsKeyPressed(KEY_C)) return {Action::ClearHardpoints, 0};
     if (IsKeyPressed(KEY_L)) return {Action::SelectLevel, -1};
     if (pressedBack()) return {Action::ToMenu, 0};
@@ -564,10 +696,27 @@ Result drawBattleHud(State& state, const Session& session) {
          session.overchargeReady() || session.overchargeCooldown() > 0.0f,
          session.overchargeCooldown(), 15.0f);
 
-    std::snprintf(line, sizeof(line), "S   %dx", session.timeScale());
-    textRight(line, screenW() - px(theme::kGutter), y + px(8.0f),
-              sz(theme::kSmall),
-              session.timeScale() > 1 ? theme::kCold : theme::kInkDim);
+    // Time control as four chevrons that light up, not a number to decode.
+    // Clickable, because "press S four times" is not a speed control.
+    const float chevW = px(26.0f);
+    const Rectangle speed{screenW() - px(theme::kGutter) - chevW * 4.0f - px(46.0f),
+                          y, chevW * 4.0f + px(46.0f), px(30.0f)};
+    DrawRectangleRec(speed, theme::withAlpha(Color{18, 17, 20, 255}, 0.92f));
+    DrawRectangleLinesEx(speed, 1.0f,
+                         session.timeScale() > 1
+                             ? theme::kCold
+                             : theme::withAlpha(theme::kColdDeep, 0.9f));
+    text("S", speed.x + px(10.0f), speed.y + px(8.0f), sz(theme::kMicro),
+         theme::kInkFaint);
+    for (int i = 0; i < 4; ++i) {
+        const bool lit = i < session.timeScale();
+        text(">", speed.x + px(30.0f) + chevW * static_cast<float>(i),
+             speed.y + px(6.0f), sz(theme::kBody),
+             lit ? theme::kCold : theme::withAlpha(theme::kColdDeep, 1.0f));
+    }
+    if (hovered(speed) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        return {Action::CycleSpeed, 0};
+    }
     textRight("esc pause", screenW() - px(theme::kGutter), y - px(14.0f),
               sz(theme::kMicro), theme::kInkFaint);
 
@@ -791,14 +940,21 @@ Result drawTree(State& state, const Session& session) {
     rule(box.x + px(theme::kGutter), box.y + 84.0f,
          box.width - px(theme::kGutter) * 2.0f, 0.7f);
 
-    // Keep the focused row on screen without a scrollbar: the list is 24 rows
-    // and the window shows most of them.
-    const float rowH = 26.0f;
-    const int visible =
-        std::max(1, static_cast<int>((box.height - 150.0f) / rowH));
+    const float rowH = px(26.0f);
+    const float listTop = box.y + px(96.0f);
+    const float listH = box.height - px(150.0f);
+    const int visible = std::max(1, static_cast<int>(listH / rowH));
+
+    // Keyboard focus drags the window along with it; the bar and the wheel
+    // move it directly.
     state.treeScroll =
-        std::clamp(state.treeScroll, state.tree.index - visible + 2,
+        std::clamp(state.treeScroll, state.tree.index - visible + 1,
                    state.tree.index);
+    const Rectangle list{box.x, listTop, box.width, listH};
+    const Rectangle track{box.x + box.width - px(10.0f), listTop, px(5.0f),
+                          listH};
+    scrollbar(track, list, state.treeScroll, visible,
+              static_cast<int>(kNodeCount));
     state.treeScroll = std::clamp(
         state.treeScroll, 0,
         std::max(0, static_cast<int>(kNodeCount) - visible));
@@ -819,8 +975,8 @@ Result drawTree(State& state, const Session& session) {
         }
 
         const Rectangle r{box.x + px(theme::kUnit),
-                          box.y + 96.0f + rowH * static_cast<float>(v),
-                          box.width - px(theme::kUnit) * 2.0f, rowH};
+                          listTop + rowH * static_cast<float>(v),
+                          box.width - px(theme::kUnit) * 2.0f - px(14.0f), rowH};
 
         // Carry the Battle Report's advice onto the shelf. Telling the player
         // what to buy and then making them remember it across a screen change
@@ -847,8 +1003,8 @@ Result drawTree(State& state, const Session& session) {
     text("enter buy  ·  X respec (free)  ·  R retry  ·  esc back",
          box.x + px(theme::kGutter), footer, sz(theme::kMicro), theme::kInkFaint);
     if (state.treeScroll + visible < static_cast<int>(kNodeCount)) {
-        textRight("more below", box.x + box.width - px(theme::kGutter), footer,
-                  sz(theme::kMicro), theme::kInkFaint);
+        textRight("scroll for more", box.x + box.width - px(theme::kGutter),
+                  footer, sz(theme::kMicro), theme::kInkFaint);
     }
 
     if (IsKeyPressed(KEY_X)) result = {Action::Respec, 0};

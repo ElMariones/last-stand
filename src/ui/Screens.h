@@ -2,6 +2,7 @@
 #include <raylib.h>
 
 #include "app/Session.h"
+#include "render/Viewport.h"
 #include "ui/Widgets.h"
 
 namespace ls::ui {
@@ -15,12 +16,15 @@ enum class Action {
     Continue,
     NewGame,
     Options,
+    Stats,
     Quit,
     Back,
     SelectLevel,     // value = level index, or -1 to open the level select
     StartBattle,
     SelectKind,      // value = TurretKind
+    BuyTurret,       // value = TurretKind
     CycleTargeting,
+    CycleSpeed,
     FillHardpoints,
     ClearHardpoints,
     Retry,
@@ -49,6 +53,7 @@ struct State {
     Focus report;
     Focus tree;
     Focus pause;
+    Focus stats;
 
     int   treeScroll = 0;
     float fade = 0.0f;         // 1 = fully covered, for screen transitions
@@ -58,6 +63,9 @@ struct State {
     bool  newGameArmed = false;
     int   windowSizeIndex = 0;
     int   hoveredHardpoint = -1;
+    // Which placed turret the mouse is dragging, or -1. Owned here because it
+    // spans frames and the screens themselves are stateless.
+    int   dragIndex = -1;
     WidgetFeedback feedback;
 };
 
@@ -67,9 +75,12 @@ Result drawTitle(State& state, const Session& session, float dt);
 Result drawMenu(State& state, const Session& session);
 Result drawOptions(State& state, Session& session);
 Result drawLevelSelect(State& state, const Session& session);
-Result drawPrepareHud(State& state, const Session& session);
-// The hardpoint markers, drawn over the battlefield in Prepare.
-void   drawHardpointOverlay(State& state, const Session& session);
+Result drawStats(State& state, const Session& session);
+Result drawPrepareHud(State& state, const Session& session,
+                      const Viewport& viewport);
+// The turret markers, drawn over the battlefield in Prepare.
+void   drawHardpointOverlay(State& state, const Session& session,
+                            const Viewport& viewport);
 Result drawBattleHud(State& state, const Session& session);
 Result drawPause(State& state, const Session& session);
 Result drawReport(State& state, const Session& session);

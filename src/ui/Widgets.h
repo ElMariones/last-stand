@@ -87,6 +87,12 @@ bool treeRow(Rectangle bounds, const char* name, const char* levelText,
 // model does not cover.
 bool hovered(Rectangle bounds);
 
+// A vertical scrollbar for a list that does not fit. Draggable, and the wheel
+// works anywhere over `content`. `scroll` is in rows; returns true when it
+// moved, so the caller can react.
+bool scrollbar(Rectangle track, Rectangle content, int& scroll, int visible,
+               int total);
+
 // The X in a panel's top-right corner. Every dismissable panel gets one:
 // keyboard users press escape, and everyone else looks for the X.
 bool closeButton(Rectangle panelBounds);

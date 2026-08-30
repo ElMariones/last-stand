@@ -23,11 +23,7 @@ void clampSettings(Settings& s) {
     s.sfxVolume    = std::clamp(s.sfxVolume, 0, 100);
     s.musicVolume  = std::clamp(s.musicVolume, 0, 100);
     s.shakeScale   = std::clamp(s.shakeScale, 0, 200);
-    // The only three the battle loop knows how to run.
-    if (s.defaultTimeScale != 1 && s.defaultTimeScale != 2 &&
-        s.defaultTimeScale != 4) {
-        s.defaultTimeScale = 1;
-    }
+    s.defaultTimeScale = std::clamp(s.defaultTimeScale, 1, 4);
     s.uiScale = std::clamp(s.uiScale, 75, 150);
     // A window smaller than this cannot fit the report panel.
     s.windowWidth = std::clamp(s.windowWidth, 1024, 7680);

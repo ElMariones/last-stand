@@ -17,6 +17,20 @@ constexpr float kOverchargeTtl = 4.0f;
 constexpr uint64_t kLevelSeedBase = 0x5EEDu;
 constexpr int kMaxHistogramRows = 256;   // any real map is far under this
 
+// Turrets need elbow room, or a player can stack six on one pixel and turn
+// positioning into a non-decision.
+constexpr float kTurretSpacing = 26.0f;
+constexpr float kBaseClearance = 18.0f;
+
+// What a turret costs, and how fast that climbs. The same 1.35 curve the
+// upgrade tree uses, so the two economies read as one system.
+constexpr uint32_t kTurretBaseCost[3] = {60u, 140u, 130u};
+constexpr double   kTurretCostGrowth = 1.35;
+
+// The arsenal a new commander starts with: four machine guns, which is what
+// the four authored emplacements used to hand out for free.
+constexpr uint32_t kStartingMachineGuns = 4u;
+
 // Builds a turret of the given kind from its base stats, then folds in every
 // relevant tree effect (scalars and the behaviour toggles). This is what lets
 // two different builds feel different: Overclock vs Explosive Shells change a
@@ -92,6 +106,11 @@ Session::Session(const char* savePath)
     } else {
         scrap_ = 0u;
     }
+    arsenal_ = saveData_.arsenal;
+    stats_ = saveData_.stats;
+    if (arsenal_[0] == 0u && arsenal_[1] == 0u && arsenal_[2] == 0u) {
+        arsenal_[0] = kStartingMachineGuns;
+    }
     clampSettings(settings_);
     timeScale_ = settings_.defaultTimeScale;
     // The session opens on the title screen, whose background is a live
@@ -133,18 +152,120 @@ void Session::rebuildLoadout() {
         if (mode != TargetingMode::Densest || effects_.densest) t.mode = mode;
     }
     if (!kindUnlocked(selectedKind_)) selectedKind_ = TurretKind::MachineGun;
-    if (world_ != nullptr) syncWorldTurrets();
+    syncWorldTurrets();
 }
 
 void Session::defaultLoadout() {
     loadout_.clear();
-    const Effects e = effects_;
-    for (const Vec2& hp : level_.map.hardpoints) {
-        loadout_.push_back(makeTurret(TurretKind::MachineGun, hp, e));
+    // Open on the suggested emplacements rather than an empty map: a first-
+    // time player should see a working defence and then rearrange it, not
+    // face a blank field and no idea what a turret is.
+    fillEmptyHardpoints();
+}
+
+uint32_t Session::owned(TurretKind kind) const {
+    return arsenal_[static_cast<size_t>(kind)];
+}
+
+uint32_t Session::placed(TurretKind kind) const {
+    uint32_t n = 0u;
+    for (const Turret& t : loadout_) {
+        if (t.kind == kind) ++n;
     }
+    return n;
+}
+
+uint32_t Session::available(TurretKind kind) const {
+    const uint32_t have = owned(kind);
+    const uint32_t out = placed(kind);
+    return (have > out) ? (have - out) : 0u;
+}
+
+uint32_t Session::turretPrice(TurretKind kind) const {
+    const size_t i = static_cast<size_t>(kind);
+    return static_cast<uint32_t>(std::llround(
+        static_cast<double>(kTurretBaseCost[i]) *
+        std::pow(kTurretCostGrowth, static_cast<double>(arsenal_[i]))));
+}
+
+bool Session::canAffordTurret(TurretKind kind) const {
+    return kindUnlocked(kind) && scrap_ >= turretPrice(kind);
+}
+
+bool Session::buyTurret(TurretKind kind) {
+    if (!canAffordTurret(kind)) return false;
+    scrap_ -= turretPrice(kind);
+    ++arsenal_[static_cast<size_t>(kind)];
+    ++stats_.turretsBought;
+    selectedKind_ = kind;
+    saveNow();
+    return true;
+}
+
+Session::Placement Session::placementAt(Vec2 pos, int ignoreIndex) const {
+    const Grid& grid = level_.map.grid;
+    int cx = 0;
+    int cy = 0;
+    if (!grid.worldToCell(pos, cx, cy)) return Placement::OffMap;
+    if (!level_.map.isWalkable(cx, cy)) return Placement::OnWall;
+
+    const float baseRange = grid.cellSize() * 1.5f + kBaseClearance;
+    if (distanceSq(pos, level_.map.baseCenter()) < baseRange * baseRange) {
+        return Placement::TooCloseToBase;
+    }
+    for (size_t i = 0; i < loadout_.size(); ++i) {
+        if (static_cast<int>(i) == ignoreIndex) continue;
+        if (distanceSq(pos, loadout_[i].position) <
+            kTurretSpacing * kTurretSpacing) {
+            return Placement::TooCloseToTurret;
+        }
+    }
+    return Placement::Ok;
+}
+
+int Session::turretIndexAt(Vec2 pos, float radius) const {
+    int best = -1;
+    float bestD = radius * radius;
+    for (size_t i = 0; i < loadout_.size(); ++i) {
+        const float d = distanceSq(loadout_[i].position, pos);
+        if (d <= bestD) {
+            bestD = d;
+            best = static_cast<int>(i);
+        }
+    }
+    return best;
+}
+
+bool Session::placeTurretAt(Vec2 pos) {
+    if (phase_ != Phase::Prepare) return false;
+    if (available(selectedKind_) == 0u) return false;
+    if (!canPlaceAt(pos)) return false;
+    loadout_.push_back(makeTurret(selectedKind_, pos, effects_));
+    syncWorldTurrets();
+    return true;
+}
+
+bool Session::moveTurret(int index, Vec2 pos) {
+    if (phase_ != Phase::Prepare) return false;
+    if (index < 0 || index >= static_cast<int>(loadout_.size())) return false;
+    if (!canPlaceAt(pos, index)) return false;
+    loadout_[static_cast<size_t>(index)].position = pos;
+    syncWorldTurrets();
+    return true;
+}
+
+void Session::recallTurret(int index) {
+    if (phase_ != Phase::Prepare) return;
+    if (index < 0 || index >= static_cast<int>(loadout_.size())) return;
+    loadout_.erase(loadout_.begin() + index);
+    syncWorldTurrets();
 }
 
 void Session::syncWorldTurrets() {
+    // The loadout is built before the first world exists (the constructor
+    // arranges a starting defence, then creates the world it goes in), so
+    // this has to tolerate being called early.
+    if (world_ == nullptr) return;
     auto& turrets = world_->turrets();
     turrets.clear();
     for (const Turret& t : loadout_) {
@@ -262,39 +383,80 @@ int Session::hardpointNear(Vec2 worldPos, float radius) const {
 
 void Session::toggleTurretAt(Vec2 worldPos, float radius) {
     if (phase_ != Phase::Prepare) return;
-    const int hp = hardpointNear(worldPos, radius);
-    if (hp < 0) return;
 
-    const int existing = turretAtHardpoint(hp);
+    // On a turret: swap its kind if a different one is selected and spare,
+    // otherwise recall it. On open ground: deploy, if there is one to deploy.
+    const int existing = turretIndexAt(worldPos, radius);
     if (existing >= 0) {
         Turret& t = loadout_[static_cast<size_t>(existing)];
-        if (t.kind == selectedKind_) {
-            // Same kind on an occupied slot: the click means "take it away".
-            loadout_.erase(loadout_.begin() + existing);
+        if (t.kind != selectedKind_ && available(selectedKind_) > 0u) {
+            t = makeTurret(selectedKind_, t.position, effects_);
         } else {
-            t = makeTurret(selectedKind_, hardpointAt(hp), effects_);
+            loadout_.erase(loadout_.begin() + existing);
         }
-    } else {
-        loadout_.push_back(makeTurret(selectedKind_, hardpointAt(hp), effects_));
+        syncWorldTurrets();
+        return;
+    }
+    placeTurretAt(worldPos);
+}
+
+void Session::removeTurretAt(Vec2 worldPos, float radius) {
+    recallTurret(turretIndexAt(worldPos, radius));
+}
+
+void Session::fillEmptyHardpoints() {
+    // Fills the suggested emplacements from whatever is spare, most numerous
+    // kind first, so one keypress produces a sensible default arrangement.
+    for (int i = 0; i < hardpointCount(); ++i) {
+        if (turretAtHardpoint(i) >= 0) continue;
+        TurretKind kind = selectedKind_;
+        if (available(kind) == 0u) {
+            bool found = false;
+            for (int k = 0; k < 3 && !found; ++k) {
+                const auto candidate = static_cast<TurretKind>(k);
+                if (available(candidate) > 0u) {
+                    kind = candidate;
+                    found = true;
+                }
+            }
+            if (!found) break;
+        }
+        const Vec2 at = hardpointAt(i);
+        if (!canPlaceAt(at)) continue;
+        loadout_.push_back(makeTurret(kind, at, effects_));
     }
     syncWorldTurrets();
 }
 
-void Session::removeTurretAt(Vec2 worldPos, float radius) {
-    if (phase_ != Phase::Prepare) return;
-    const int hp = hardpointNear(worldPos, radius);
-    if (hp < 0) return;
-    const int existing = turretAtHardpoint(hp);
-    if (existing < 0) return;
-    loadout_.erase(loadout_.begin() + existing);
-    syncWorldTurrets();
-}
+void Session::autoDeploy() {
+    fillEmptyHardpoints();
 
-void Session::fillEmptyHardpoints() {
-    if (phase_ != Phase::Prepare) return;
-    for (int i = 0; i < hardpointCount(); ++i) {
-        if (turretAtHardpoint(i) >= 0) continue;
-        loadout_.push_back(makeTurret(selectedKind_, hardpointAt(i), effects_));
+    // Anything still in the crate goes on a ring around the emplacements,
+    // widening until it finds room. Not clever — deliberately: this is the
+    // "I do not want to think about it" button, and a player who does want
+    // to think about it drags them where they belong.
+    for (int k = 0; k < 3; ++k) {
+        const auto kind = static_cast<TurretKind>(k);
+        if (!kindUnlocked(kind)) continue;
+        while (available(kind) > 0u) {
+            bool placedOne = false;
+            for (float radius = 34.0f; radius <= 200.0f && !placedOne;
+                 radius += 26.0f) {
+                for (int step = 0; step < 12 && !placedOne; ++step) {
+                    const float angle =
+                        static_cast<float>(step) * 0.5235987756f;   // 30 deg
+                    for (int h = 0; h < hardpointCount() && !placedOne; ++h) {
+                        const Vec2 at{
+                            hardpointAt(h).x + std::cos(angle) * radius,
+                            hardpointAt(h).y + std::sin(angle) * radius};
+                        if (!canPlaceAt(at)) continue;
+                        loadout_.push_back(makeTurret(kind, at, effects_));
+                        placedOne = true;
+                    }
+                }
+            }
+            if (!placedOne) return;   // nowhere left to put anything
+        }
     }
     syncWorldTurrets();
 }
@@ -325,7 +487,11 @@ void Session::startBattle() {
 }
 
 void Session::cycleTimeScale() {
-    timeScale_ = (timeScale_ == 1) ? 2 : (timeScale_ == 2) ? 4 : 1;
+    timeScale_ = (timeScale_ >= 4) ? 1 : (timeScale_ + 1);
+}
+
+void Session::setTimeScale(int scale) {
+    timeScale_ = std::clamp(scale, 1, 4);
 }
 
 void Session::fireAirstrike() {
@@ -514,13 +680,20 @@ void Session::goOptions() {
 
 void Session::goLevelSelect() { phase_ = Phase::LevelSelect; }
 
+void Session::goStats() {
+    returnPhase_ = phase_;
+    phase_ = Phase::Stats;
+}
+
 void Session::pause() {
     if (phase_ == Phase::Battle) phase_ = Phase::Pause;
 }
 
 void Session::resume() {
     if (phase_ == Phase::Pause) phase_ = Phase::Battle;
-    else if (phase_ == Phase::Options) phase_ = returnPhase_;
+    else if (phase_ == Phase::Options || phase_ == Phase::Stats) {
+        phase_ = returnPhase_;
+    }
 }
 
 void Session::abandonBattle() {
@@ -540,6 +713,16 @@ void Session::finishBattle() {
                             tree_.bonuses().scrapMult);
 
     scrap_ += payout_.scrap;
+
+    // Lifetime totals. Recorded here rather than in the world, because they
+    // outlive every battle and belong to the save.
+    ++stats_.runs;
+    if (result_.victory) ++stats_.victories;
+    stats_.kills += totalKills;
+    stats_.scrapEarned += payout_.scrap;
+    stats_.secondsPlayed +=
+        static_cast<uint32_t>(telemetry_.elapsedSeconds());
+    stats_.bestRunKills = std::max(stats_.bestRunKills, totalKills);
     if (totalKills > bestKills_[li]) bestKills_[li] = totalKills;
     if (result_.victory) ++clearCounts_[li];
 
@@ -581,6 +764,7 @@ void Session::backToPrepare() {
 void Session::buy(NodeId node) {
     if (phase_ != Phase::Tree) return;
     if (tree_.purchase(node, scrap_)) {
+        ++stats_.nodesBought;
         rebuildEffects();
         saveNow();
     }
@@ -613,10 +797,12 @@ bool Session::hasProgress() const {
 
 void Session::newGame() {
     scrap_ = 0u;
+    arsenal_ = {kStartingMachineGuns, 0u, 0u};
     uint32_t refund = 0u;
     tree_.respecAll(refund);      // zeroes every node; the refund is discarded
     bestKills_.fill(0u);
     clearCounts_.fill(0u);
+    stats_ = Stats{};
     levelIndex_ = 0;
     level_ = makeLevel1();
     selectedKind_ = TurretKind::MachineGun;
@@ -639,6 +825,8 @@ void Session::saveNow() const {
     d.bestKills = bestKills_;
     d.clearCounts = clearCounts_;
     d.settings = settings_;
+    d.arsenal = arsenal_;
+    d.stats = stats_;
     ls::save(d, savePath_.c_str());
 }
 

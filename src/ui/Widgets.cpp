@@ -1,6 +1,7 @@
 #include "ui/Widgets.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 #include "render/Theme.h"
@@ -243,6 +244,45 @@ bool toggle(Rectangle bounds, const char* label, bool& value, Focus& focus,
     if (rowActivated(bounds, isFocused, true)) changed = true;
     if (changed) value = !value;
     return changed;
+}
+
+bool scrollbar(Rectangle track, Rectangle content, int& scroll, int visible,
+               int total) {
+    if (total <= visible) return false;
+    const int maxScroll = total - visible;
+    const int before = scroll;
+
+    // The wheel is what most people reach for first, so it works over the
+    // whole list rather than only over the bar.
+    if (hovered(content)) {
+        const float wheel = GetMouseWheelMove();
+        if (wheel > 0.0f) --scroll;
+        if (wheel < 0.0f) ++scroll;
+    }
+
+    DrawRectangleRec(track, theme::withAlpha(theme::kColdDeep, 0.5f));
+
+    const float fraction =
+        static_cast<float>(visible) / static_cast<float>(total);
+    const float thumbH = std::max(px(24.0f), track.height * fraction);
+    const float travel = track.height - thumbH;
+    const float t = (maxScroll > 0)
+                        ? static_cast<float>(scroll) / static_cast<float>(maxScroll)
+                        : 0.0f;
+    const Rectangle thumb{track.x, track.y + travel * t, track.width, thumbH};
+
+    const bool over = hovered(track) || hovered(thumb);
+    DrawRectangleRec(thumb, over ? theme::kCold : theme::kColdDim);
+
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && hovered(track) && travel > 0.0f) {
+        const float grab =
+            std::clamp((GetMousePosition().y - track.y - thumbH * 0.5f) / travel,
+                       0.0f, 1.0f);
+        scroll = static_cast<int>(std::lround(grab * static_cast<float>(maxScroll)));
+    }
+
+    scroll = std::clamp(scroll, 0, maxScroll);
+    return scroll != before;
 }
 
 bool closeButton(Rectangle panelBounds) {

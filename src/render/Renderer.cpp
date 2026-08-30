@@ -433,24 +433,35 @@ void Renderer::drawVignette() {
 }
 
 void Renderer::draw(const World& world,
+                    const Viewport& viewport,
                     float alpha,
                     const DebugFlags& flags,
                     const RenderSettings& settings,
                     const FxScene& fx) {
+    // One transform carries both the fit-to-window scale and the screenshake,
+    // so every world-space draw call below is written in world units and
+    // nothing has to know how big the window is.
     Camera2D camera{};
     camera.target = Vector2{0.0f, 0.0f};
-    camera.offset = Vector2{fx.shake.x, fx.shake.y};
+    camera.offset = Vector2{viewport.origin.x + fx.shake.x,
+                            viewport.origin.y + fx.shake.y};
     camera.rotation = 0.0f;
-    camera.zoom = 1.0f;
+    camera.zoom = viewport.zoom;
+
+    // Outside the fitted world is not playfield; fill it so letterbox bars
+    // read as frame rather than as more map.
+    ClearBackground(theme::kVoid);
 
     BeginMode2D(camera);
 
     drawTerrain(world, flags);
     drawCorpses(fx);
 
-    const Rect view = viewportRect(static_cast<float>(GetScreenWidth()),
-                                   static_cast<float>(GetScreenHeight()),
-                                   kCullMargin);
+    // Culled against the world, not the window: the whole map is always on
+    // screen now, so the only thing culling drops is what has been shoved
+    // outside the playfield.
+    const Rect view = viewportRect(world.map().grid.worldWidth(),
+                                   world.map().grid.worldHeight(), kCullMargin);
     bucketEnemies(world, alpha, view, settings);
     drawHorde(world, alpha, settings);
 

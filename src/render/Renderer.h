@@ -6,6 +6,7 @@
 #include "fx/DamageNumbers.h"
 #include "fx/Particles.h"
 #include "render/Lod.h"
+#include "render/Viewport.h"
 #include "sim/World.h"
 
 namespace ls {
@@ -50,6 +51,7 @@ public:
     // alpha is FixedTimestep::alpha() — the interpolation factor between
     // the previous and current tick.
     void draw(const World& world,
+              const Viewport& viewport,
               float alpha,
               const DebugFlags& flags,
               const RenderSettings& settings = RenderSettings{},

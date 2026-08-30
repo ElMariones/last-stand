@@ -29,6 +29,7 @@ SaveData makeData() {
     d.settings.windowWidth = 1600;
     d.settings.windowHeight = 900;
     d.settings.fullscreen = true;
+    d.arsenal = {5u, 2u, 1u};
     return d;
 }
 
@@ -39,7 +40,9 @@ std::vector<uint8_t> makeOldBytes(uint8_t version) {
     auto bytes = ls::serialize(makeData());
     bytes[4] = version;
     const size_t core = 2u + 1u + ls::kNodeCount + 2u * ls::kSaveLevels;
-    const size_t words = (version == 1u) ? core : core + 6u;
+    size_t words = core;
+    if (version >= 2u) words += 6u;   // settings block
+    if (version >= 3u) words += 3u;   // window size and ui scale
     bytes.resize(4u * words);
     return bytes;
 }
@@ -70,6 +73,7 @@ TEST_CASE("serialize then deserialize round-trips every field") {
     CHECK(out.settings.uiScale == in.settings.uiScale);
     CHECK(out.settings.windowWidth == in.settings.windowWidth);
     CHECK(out.settings.fullscreen == in.settings.fullscreen);
+    CHECK(out.arsenal == in.arsenal);
 }
 
 TEST_CASE("deserialize rejects a bad magic") {
@@ -114,8 +118,9 @@ TEST_CASE("a version 1 save still loads, with settings defaulted") {
     CHECK(out.settings.hitstop == defaults.hitstop);
     CHECK(out.settings.uiScale == defaults.uiScale);
     // Read as v1, written back as the current version: the upgrade is
-    // one-way and silent.
-    CHECK(out.version == 3u);
+    // one-way and silent. Compared against SaveData's own default rather
+    // than a literal, so bumping the format does not require editing this.
+    CHECK(out.version == SaveData{}.version);
 }
 
 TEST_CASE("a version 2 save keeps its settings and defaults only the new ones") {
@@ -129,10 +134,25 @@ TEST_CASE("a version 2 save keeps its settings and defaults only the new ones") 
     CHECK(out.settings.masterVolume == expected.settings.masterVolume);
     CHECK(out.settings.shakeScale == expected.settings.shakeScale);
     CHECK(out.settings.debugOverlay == expected.settings.debugOverlay);
-    // v3 fields fall back rather than reading whatever followed.
+    // Later fields fall back rather than reading whatever followed.
     CHECK(out.settings.uiScale == defaults.uiScale);
     CHECK(out.settings.windowWidth == defaults.windowWidth);
-    CHECK(out.version == 3u);
+    CHECK(out.arsenal[0] == 0u);
+    CHECK(out.version == SaveData{}.version);
+}
+
+TEST_CASE("a version 3 save keeps its display settings and defaults the arsenal") {
+    const auto bytes = makeOldBytes(3u);
+    const SaveData expected = makeData();
+
+    SaveData out;
+    REQUIRE(ls::deserialize(bytes.data(), bytes.size(), out));
+    CHECK(out.settings.uiScale == expected.settings.uiScale);
+    CHECK(out.settings.windowWidth == expected.settings.windowWidth);
+    // A zero arsenal is what Session reads as "hand this commander their
+    // starting four machine guns".
+    CHECK(out.arsenal[0] == 0u);
+    CHECK(out.arsenal[1] == 0u);
 }
 
 TEST_CASE("a save from a NEWER build is refused rather than misread") {
@@ -159,7 +179,10 @@ TEST_CASE("out-of-range settings are clamped on load, never propagated") {
     REQUIRE(ls::deserialize(bytes.data(), bytes.size(), out));
     CHECK(out.settings.masterVolume == 100);
     CHECK(out.settings.shakeScale >= 0);
-    CHECK(out.settings.defaultTimeScale == 1);
+    // Speeds are a 1..4 range now, so an out-of-range value clamps into it
+    // rather than snapping back to the slowest.
+    CHECK(out.settings.defaultTimeScale >= 1);
+    CHECK(out.settings.defaultTimeScale <= 4);
 }
 
 TEST_CASE("save then load returns an identical SaveData") {

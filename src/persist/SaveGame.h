@@ -19,13 +19,17 @@ constexpr size_t kSaveLevels = 8u;
 //   1  scrap, node levels, bests, clear counts
 //   2  + the settings block (M6)
 //   3  + window size and UI scale
+//   4  + the turret arsenal (how many of each kind the player owns)
+//   5  + lifetime statistics
 struct SaveData {
-    uint32_t version = 3u;
+    uint32_t version = 5u;
     uint32_t scrap = 0u;
     std::array<uint32_t, kNodeCount> nodeLevels{};
     std::array<uint32_t, kSaveLevels> bestKills{};
     std::array<uint32_t, kSaveLevels> clearCounts{};
     Settings settings{};
+    std::array<uint32_t, 3> arsenal{};   // machine gun, cannon, flamethrower
+    Stats stats{};
 };
 
 // Fixed little-endian serialization: magic 'LSTD' + version + fields. Always

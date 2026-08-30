@@ -38,6 +38,26 @@ void clampSettings(Settings& s);
 uint32_t packSettingFlags(const Settings& s);
 void     unpackSettingFlags(uint32_t bits, Settings& s);
 
+// Lifetime totals across every run the player has ever made. Kept beside the
+// settings because both are "things about this save that are not progress",
+// and both need the same versioned round-trip.
+struct Stats {
+    uint32_t runs           = 0u;
+    uint32_t victories      = 0u;
+    uint32_t kills          = 0u;
+    uint32_t scrapEarned    = 0u;
+    uint32_t secondsPlayed  = 0u;
+    uint32_t bestRunKills   = 0u;
+    uint32_t turretsBought  = 0u;
+    uint32_t nodesBought    = 0u;
+
+    float winRate() const {
+        return (runs == 0u) ? 0.0f
+                            : static_cast<float>(victories) /
+                                  static_cast<float>(runs);
+    }
+};
+
 // The window sizes the options screen cycles through.
 int  windowSizeCount();
 void windowSizeAt(int index, int& width, int& height);

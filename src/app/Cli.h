@@ -19,6 +19,10 @@ struct Options {
     // instead of a matter of pressing keys fast enough.
     const char* shotScreen = "battle";
     const char* shotPath   = "shot.png";
+    // Overrides the saved window size for this run. Used to check that the
+    // game reflows at a size other than the one it was designed at.
+    int      windowWidth   = 0;
+    int      windowHeight  = 0;
 
     // Benchmark sweep: run the standard entity ladder and append a row per
     // rung to `sweepPath`, tagged `stage` / `notes`. This is what produces

@@ -57,6 +57,12 @@ Options parseArgs(int argc, const char* const* argv) {
             takeText(argc, argv, i, o.shotScreen);
         } else if (std::strcmp(a, "--shot-out") == 0) {
             takeText(argc, argv, i, o.shotPath);
+        } else if (std::strcmp(a, "--width") == 0) {
+            uint64_t v = 0u;
+            if (takeValue(argc, argv, i, v)) o.windowWidth = static_cast<int>(v);
+        } else if (std::strcmp(a, "--height") == 0) {
+            uint64_t v = 0u;
+            if (takeValue(argc, argv, i, v)) o.windowHeight = static_cast<int>(v);
         } else if (std::strcmp(a, "--sweep") == 0) {
             if (takeText(argc, argv, i, o.sweepPath)) o.bench = true;
         } else if (std::strcmp(a, "--stage") == 0) {
@@ -106,6 +112,7 @@ const char* usageText() {
         "  --shot-screen <s>   which screen to capture (title|menu|options|\n"
         "                      levels|prepare|battle|report|tree)\n"
         "  --shot-out <file>   screenshot path (default shot.png)\n"
+        "  --width/--height    override the saved window size for this run\n"
         "  -h, --help          this text\n";
 }
 

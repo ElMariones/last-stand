@@ -27,6 +27,7 @@ enum class Phase {
     Menu,
     Options,
     LevelSelect,
+    Stats,
     Prepare,
     Battle,
     Pause,
@@ -71,6 +72,8 @@ public:
     const BattleTelemetry& telemetry() const { return telemetry_; }
 
     // --- settings ----------------------------------------------------------
+    const Stats& stats() const { return stats_; }
+
     const Settings& settings() const { return settings_; }
     Settings&       settings() { return settings_; }
     // Re-reads the settings into everything that derives from them and saves.
@@ -80,6 +83,7 @@ public:
     void goMenu();
     void goOptions();
     void goLevelSelect();
+    void goStats();
     void pause();
     void resume();
     void abandonBattle();          // Pause -> Menu, no payout
@@ -94,29 +98,53 @@ public:
     void cycleTargeting();
     TargetingMode targetingMode() const;
 
-    // Hardpoints: how many slots this level offers, where they are, and
-    // whether each currently holds a turret. The Prepare screen needs all
-    // three to show the player what they have and what is still empty.
+    // --- the arsenal -------------------------------------------------------
+    // Turrets are things you own, not slots you fill. Buy them, then put them
+    // wherever you like: positioning IS the tactical decision, and a fixed
+    // grid of emplacements was making that decision for the player.
+    uint32_t owned(TurretKind kind) const;
+    uint32_t placed(TurretKind kind) const;
+    uint32_t available(TurretKind kind) const;
+    uint32_t turretPrice(TurretKind kind) const;
+    bool     canAffordTurret(TurretKind kind) const;
+    bool     buyTurret(TurretKind kind);
+
+    // Suggested emplacements, drawn as a hint. Placement is not limited to
+    // them; F drops one turret on each free one for players who would rather
+    // not think about it.
     int  hardpointCount() const;
     Vec2 hardpointAt(int index) const;
     int  turretAtHardpoint(int index) const;   // loadout index, or -1
-    int  turretCount() const { return static_cast<int>(loadout_.size()); }
-    // Nearest hardpoint to a point within `radius`, or -1.
     int  hardpointNear(Vec2 worldPos, float radius) const;
 
-    // Click behaviour: an empty slot takes the selected kind, a slot holding
-    // a different kind is replaced, and a slot already holding the selected
-    // kind is cleared. Every click therefore visibly does something — which
-    // the old replace-only path did not, since every slot started full of the
-    // only unlocked turret.
+    int  turretCount() const { return static_cast<int>(loadout_.size()); }
+    const std::vector<Turret>& loadout() const { return loadout_; }
+
+    // Anywhere walkable, clear of the base and of other turrets. Returns why
+    // not, so the cursor can say so rather than just refusing.
+    enum class Placement { Ok, OffMap, OnWall, TooCloseToBase, TooCloseToTurret };
+    Placement placementAt(Vec2 worldPos, int ignoreIndex = -1) const;
+    bool canPlaceAt(Vec2 worldPos, int ignoreIndex = -1) const {
+        return placementAt(worldPos, ignoreIndex) == Placement::Ok;
+    }
+
+    int  turretIndexAt(Vec2 worldPos, float radius) const;
+    bool placeTurretAt(Vec2 worldPos);          // spends one from the arsenal
+    bool moveTurret(int index, Vec2 worldPos);  // drag; refuses invalid drops
+    void recallTurret(int index);               // back into the arsenal
     void toggleTurretAt(Vec2 worldPos, float radius);
     void removeTurretAt(Vec2 worldPos, float radius);
+    // Deploys everything still in reserve: the suggested emplacements first,
+    // then outward from them. One keypress for players who would rather not
+    // arrange anything, and the harness's placement policy.
+    void autoDeploy();
     void fillEmptyHardpoints();
     void clearLoadout();
 
     // Time controls (1x/2x/4x).
     int  timeScale() const { return timeScale_; }
     void cycleTimeScale();
+    void setTimeScale(int scale);
 
     // Abilities.
     bool airstrikeReady() const { return effects_.airstrike && airstrikeCd_ <= 0.0f; }
@@ -186,6 +214,7 @@ private:
     SaveData       saveData_;
     UpgradeTree    tree_;
     Settings       settings_;
+    Stats          stats_;
     uint32_t       scrap_ = 0u;
     std::array<uint32_t, kSaveLevels> bestKills_{};
     std::array<uint32_t, kSaveLevels> clearCounts_{};
@@ -195,6 +224,8 @@ private:
     Level   level_ = makeLevel1();
 
     std::vector<Turret>    loadout_;   // the build, persistent across retries
+    // How many of each kind the player owns, placed or not.
+    std::array<uint32_t, 3> arsenal_{};
     std::unique_ptr<World> world_;
     SpawnDirector          director_;
     Phase                  phase_ = Phase::Title;

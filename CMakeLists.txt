@@ -88,6 +88,7 @@ add_library(laststand_core STATIC
     src/fx/Corpses.cpp
     src/fx/DamageNumbers.cpp
     src/render/Renderer.cpp
+    src/render/Viewport.cpp
     src/ui/Widgets.cpp
     src/ui/Screens.cpp
     src/app/Cli.cpp
@@ -138,6 +139,7 @@ add_executable(laststand_tests
     tests/test_audio.cpp
     tests/test_telemetry.cpp
     tests/test_balance.cpp
+    tests/test_viewport.cpp
     tests/test_golden.cpp
     tests/test_noalloc.cpp
 )

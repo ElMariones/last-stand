@@ -26,6 +26,30 @@ int spendEverything(Session& session) {
     for (int guard = 0; guard < 64; ++guard) {
         bool purchased = false;
 
+        // More guns is a real option now, so the model player weighs it: buy
+        // one whenever it is the cheapest thing on the board and the arsenal
+        // is still small. Without this the harness would be measuring an
+        // economy the player does not have.
+        {
+            const TurretKind kind = session.selectedKind();
+            const uint32_t total = session.owned(TurretKind::MachineGun) +
+                                   session.owned(TurretKind::Cannon) +
+                                   session.owned(TurretKind::Flamethrower);
+            if (total < 10u && session.canAffordTurret(kind)) {
+                uint32_t cheapestNode = 0xFFFFFFFFu;
+                for (size_t n = 0; n < kNodeCount; ++n) {
+                    const auto node = static_cast<NodeId>(n);
+                    if (!isRepeatable(node) && session.tree().has(node)) continue;
+                    cheapestNode = std::min(cheapestNode, session.tree().cost(node));
+                }
+                if (session.turretPrice(kind) <= cheapestNode &&
+                    session.buyTurret(kind)) {
+                    ++bought;
+                    continue;
+                }
+            }
+        }
+
         const FailureAnalysis& fa = session.failure();
         for (int i = 0; i < fa.suggestionCount && !purchased; ++i) {
             const NodeId node = fa.suggestions[static_cast<size_t>(i)];
@@ -74,8 +98,12 @@ BalanceReport runBalance(int runs, int levelIndex) {
 
     for (int r = 0; r < runs; ++r) {
         if (session.phase() != Phase::Battle) {
-            if (session.phase() == Phase::Prepare) session.startBattle();
-            else session.retry();
+            if (session.phase() == Phase::Prepare) {
+                session.autoDeploy();
+                session.startBattle();
+            } else {
+                session.retry();
+            }
         }
         playOut(session);
 
@@ -90,6 +118,9 @@ BalanceReport runBalance(int runs, int levelIndex) {
 
         session.openTree();
         run.bought = spendEverything(session);
+        // Anything bought has to actually reach the field before the next run.
+        session.backToPrepare();
+        session.autoDeploy();
         run.scrapAfter = session.scrap();
 
         report.peakKills = std::max(report.peakKills, run.kills);
