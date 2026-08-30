@@ -119,9 +119,34 @@ void accumulateQueries(const EnemyPool& pool, const SpatialHash& hash,
     }
 }
 
+// Slides along a wall rather than stopping dead against it: try the whole
+// move, then each axis alone. An enemy already inside geometry (spawned there,
+// or shoved there before this existed) is allowed to move freely so it can get
+// out, rather than being sealed in.
+inline Vec2 resolveWalls(const LevelMap& map, Vec2 from, Vec2 to) {
+    int cx = 0;
+    int cy = 0;
+    if (!map.grid.worldToCell(from, cx, cy) || !map.isWalkable(cx, cy)) {
+        return to;
+    }
+    const auto open = [&](Vec2 p) {
+        int tx = 0;
+        int ty = 0;
+        return map.grid.worldToCell(p, tx, ty) && map.isWalkable(tx, ty);
+    };
+    if (open(to)) return to;
+
+    const Vec2 alongX{to.x, from.y};
+    if (open(alongX)) return alongX;
+    const Vec2 alongY{from.x, to.y};
+    if (open(alongY)) return alongY;
+    return from;
+}
+
 }  // namespace
 
 void updateMovement(EnemyPool& pool,
+                    const LevelMap& map,
                     const FlowField& field,
                     const SpatialHash& hash,
                     float dt,
@@ -154,7 +179,7 @@ void updateMovement(EnemyPool& pool,
         const Vec2 velocity =
             desired + pushScratch[i] * params.separationStrength;
         pool.velocity[i] = velocity;
-        pool.position[i] = self + velocity * dt;
+        pool.position[i] = resolveWalls(map, self, self + velocity * dt);
     }
 }
 

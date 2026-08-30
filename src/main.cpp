@@ -110,7 +110,9 @@ int runRenderBench(const ls::Options& options) {
     level.totalEnemies = options.renderBench;
 
     ls::World world{level.map, options.seed};
-    for (const ls::Vec2& hp : level.map.hardpoints) world.placeTurret(hp);
+    for (const ls::Vec2& p : ls::defaultDeployPositions(level.map, 4)) {
+        world.placeTurret(p);
+    }
     world.setLevelTotal(level.totalEnemies);
     world.base().maxHealth = 1.0e9f;
     world.base().health = world.base().maxHealth;
@@ -290,7 +292,7 @@ int main(int argc, char** argv) {
             // hunting for a 14px hitbox with a mouse is not a game mechanic.
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
                 screenMouse.y < hudTop) {
-                const int hit = session.turretIndexAt(m, 26.0f);
+                const int hit = session.turretIndexAt(m, 16.0f);
                 if (hit >= 0) {
                     ui.dragIndex = hit;
                 } else {
@@ -306,7 +308,7 @@ int main(int argc, char** argv) {
             }
             if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) &&
                 screenMouse.y < hudTop) {
-                session.removeTurretAt(m, 26.0f);
+                session.removeTurretAt(m, 16.0f);
             }
         } else {
             ui.dragIndex = -1;

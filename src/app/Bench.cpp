@@ -45,7 +45,9 @@ BenchResult runBench(const Options& options) {
     const Level level = makeBenchLevel(options.spawn);
     World world{level.map, options.seed};
     world.setNaiveSeparation(options.naiveSeparation);
-    for (const Vec2& hp : level.map.hardpoints) world.placeTurret(hp);
+    for (const Vec2& p : defaultDeployPositions(level.map, 4)) {
+        world.placeTurret(p);
+    }
     world.setLevelTotal(level.totalEnemies);
 
     // An indestructible base. World::tick short-circuits once a battle is

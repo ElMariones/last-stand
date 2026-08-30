@@ -61,7 +61,9 @@ TEST_CASE("the allocation counter itself works") {
 TEST_CASE("a battle tick allocates nothing") {
     const ls::Level level = ls::makeLevel3();
     ls::World world{level.map, 4242u};
-    for (const ls::Vec2& hp : level.map.hardpoints) world.placeTurret(hp);
+    for (const ls::Vec2& p : ls::defaultDeployPositions(level.map, 4)) {
+        world.placeTurret(p);
+    }
     world.setLevelTotal(level.totalEnemies);
     world.base().maxHealth = 1.0e9f;
     world.base().health = world.base().maxHealth;
@@ -92,8 +94,9 @@ TEST_CASE("a burning, exploding battle still allocates nothing") {
     world.base().maxHealth = 1.0e9f;
     world.base().health = world.base().maxHealth;
 
-    for (size_t i = 0; i < level.map.hardpoints.size(); ++i) {
-        world.placeTurret(level.map.hardpoints[i]);
+    const auto spots = ls::defaultDeployPositions(level.map, 4);
+    for (size_t i = 0; i < spots.size(); ++i) {
+        world.placeTurret(spots[i]);
         ls::Turret& t = world.turrets().back();
         t.mode = ls::TargetingMode::Densest;
         if (i % 2u == 0u) {

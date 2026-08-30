@@ -3,6 +3,7 @@
 
 #include "ai/FlowField.h"
 #include "sim/EnemyPool.h"
+#include "sim/LevelMap.h"
 #include "sim/SpatialHash.h"
 
 namespace ls {
@@ -20,7 +21,15 @@ struct MovementParams {
 };
 
 // Advances every live enemy by one tick: sample the flow field for
-// direction, add a local separation force, integrate.
+// direction, add a local separation force, integrate, and resolve against
+// walls.
+//
+// The wall resolution is not optional. The flow field keeps enemies out of
+// walls on its own, but separation does not know about geometry, and in a
+// dense chokepoint it will happily shove someone into a wall block. The flow
+// field is zero inside a wall, so that enemy then stands there for the rest
+// of the battle — alive, unkillable in practice, and enough to stop the
+// victory condition from ever firing.
 //
 // `hash` must have been built over the pool's CURRENT positions; separation
 // reads neighbours from it. `pushScratch` is a caller-owned buffer of at
@@ -31,6 +40,7 @@ struct MovementParams {
 // neighbours were at the START of the tick, never by where the ones already
 // processed have moved to.
 void updateMovement(EnemyPool& pool,
+                    const LevelMap& map,
                     const FlowField& field,
                     const SpatialHash& hash,
                     float dt,

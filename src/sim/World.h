@@ -38,6 +38,9 @@ public:
     void placeTurret(Vec2 position);   // appends a default Machine Gun
     void addTracer(Vec2 from, Vec2 to, float ttl);
     void setLevelTotal(uint32_t total) { levelTotal_ = total; }
+    // Per-sector toughness. Applied at spawn, so it is part of the invasion
+    // rather than a modifier the combat loop has to remember.
+    void setHealthMultiplier(float mult) { healthMult_ = (mult > 0.0f) ? mult : 1.0f; }
     // Stage 0 baseline switch; see MovementParams::naiveSeparation.
     void setNaiveSeparation(bool naive) { movement_.naiveSeparation = naive; }
     void tick(float dt);
@@ -106,6 +109,7 @@ private:
     uint32_t        totalKills_   = 0u;
     uint32_t        spawned_      = 0u;
     uint32_t        levelTotal_   = 0u;
+    float           healthMult_   = 1.0f;
 };
 
 }  // namespace ls

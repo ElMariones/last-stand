@@ -56,8 +56,9 @@ TEST_CASE("interleaving two worlds does not couple them") {
 TEST_CASE("determinism holds with turrets placed") {
     const auto run = [] {
         World w{ls::makeM1Map(), 99u};
-        w.placeTurret(w.map().hardpoints[0]);
-        w.placeTurret(w.map().hardpoints[1]);
+        for (const ls::Vec2& p : ls::defaultDeployPositions(w.map(), 2)) {
+            w.placeTurret(p);
+        }
         w.spawnWave(200u);
         for (int i = 0; i < 2000; ++i) w.tick(1.0f / 60.0f);
         return w.stateHash();
@@ -69,7 +70,9 @@ TEST_CASE("determinism holds when driven by a spawn director") {
     const auto run = [] {
         const ls::Level level = ls::makeLevel1();
         World w{level.map, 42u};
-        for (const ls::Vec2& hp : level.map.hardpoints) w.placeTurret(hp);
+        for (const ls::Vec2& p : ls::defaultDeployPositions(level.map, 4)) {
+            w.placeTurret(p);
+        }
         w.setLevelTotal(level.totalEnemies);
 
         ls::SpawnDirector director;

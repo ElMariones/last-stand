@@ -427,23 +427,9 @@ void drawHardpointOverlay(State& state, const Session& session,
     const Vector2 mouseScreen = GetMousePosition();
     const Vec2 mouse =
         viewport.screenToWorld(Vec2{mouseScreen.x, mouseScreen.y});
-    state.hoveredHardpoint = session.hardpointNear(mouse, 24.0f);
-
-    // Suggested emplacements: faint, and only while they are still free.
-    for (int i = 0; i < session.hardpointCount(); ++i) {
-        if (session.turretAtHardpoint(i) >= 0) continue;
-        const Vec2 hp = viewport.worldToScreen(session.hardpointAt(i));
-        const float r = viewport.scaled(18.0f);
-        const Color ring = theme::withAlpha(theme::kInkFaint, 0.55f);
-        DrawCircleLinesV(Vector2{hp.x, hp.y}, r, ring);
-        const float t = r * 0.28f;
-        DrawLineEx(Vector2{hp.x - t, hp.y}, Vector2{hp.x + t, hp.y}, 1.5f, ring);
-        DrawLineEx(Vector2{hp.x, hp.y - t}, Vector2{hp.x, hp.y + t}, 1.5f, ring);
-    }
-
     // Every placed turret gets a ring, and the one under the cursor shows the
     // range it actually covers — the number that makes positioning a decision.
-    const int hoverTurret = session.turretIndexAt(mouse, 26.0f);
+    const int hoverTurret = session.turretIndexAt(mouse, 16.0f);
     for (size_t i = 0; i < session.loadout().size(); ++i) {
         const Turret& t = session.loadout()[i];
         const Vec2 p = viewport.worldToScreen(t.position);

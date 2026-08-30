@@ -18,7 +18,6 @@ constexpr Color kBaseBad    = theme::kDanger;
 constexpr Color kText       = theme::kInk;
 constexpr Color kFlow       {70, 90, 110, 255};
 constexpr Color kTurret     = theme::kCold;
-constexpr Color kHardpoint  {90, 90, 96, 255};
 constexpr Color kRange      {70, 130, 160, 110};
 constexpr Color kTracer     = theme::kTracer;
 constexpr Color kOutline    = theme::kOutline;
@@ -465,9 +464,6 @@ void Renderer::draw(const World& world,
     bucketEnemies(world, alpha, view, settings);
     drawHorde(world, alpha, settings);
 
-    for (const Vec2& hp : world.map().hardpoints) {
-        DrawCircleLinesV(toRl(hp), 10.0f, kHardpoint);
-    }
     drawTurrets(world, flags);
 
     // Tracers get a bright core over a wider soft body: the difference

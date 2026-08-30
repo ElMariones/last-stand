@@ -18,8 +18,10 @@ constexpr uint64_t kLevelSeedBase = 0x5EEDu;
 constexpr int kMaxHistogramRows = 256;   // any real map is far under this
 
 // Turrets need elbow room, or a player can stack six on one pixel and turn
-// positioning into a non-decision.
-constexpr float kTurretSpacing = 26.0f;
+// positioning into a non-decision. It also has to be comfortably larger than
+// the click radius below: when the two were equal, clicking the gap between
+// two turrets grabbed one of them instead of deploying into it.
+constexpr float kTurretSpacing = 34.0f;
 constexpr float kBaseClearance = 18.0f;
 
 // What a turret costs, and how fast that climbs. The same 1.35 curve the
@@ -85,14 +87,6 @@ Turret makeTurret(TurretKind kind, Vec2 pos, const Effects& e) {
     return t;
 }
 
-Level makeLevelByIndex(int idx) {
-    switch (idx) {
-        case 1: return makeLevel2();
-        case 2: return makeLevel3();
-        default: return makeLevel1();
-    }
-}
-
 }  // namespace
 
 Session::Session(const char* savePath)
@@ -156,11 +150,11 @@ void Session::rebuildLoadout() {
 }
 
 void Session::defaultLoadout() {
+    // Open with the arsenal already deployed rather than an empty map: a
+    // first-time player should see a working defence and then rearrange it,
+    // not face a blank field and no idea what a turret is.
     loadout_.clear();
-    // Open on the suggested emplacements rather than an empty map: a first-
-    // time player should see a working defence and then rearrange it, not
-    // face a blank field and no idea what a turret is.
-    fillEmptyHardpoints();
+    autoDeploy();
 }
 
 uint32_t Session::owned(TurretKind kind) const {
@@ -280,7 +274,7 @@ void Session::syncWorldTurrets() {
 }
 
 void Session::selectLevel(int idx) {
-    idx = std::clamp(idx, 0, 2);
+    idx = std::clamp(idx, 0, kLevelCount - 1);
     levelIndex_ = idx;
     level_ = makeLevelByIndex(idx);
     defaultLoadout();
@@ -299,6 +293,7 @@ void Session::resetWorld() {
     world_ = std::make_unique<World>(
         level_.map, /*seed*/ kLevelSeedBase + static_cast<uint64_t>(levelIndex_));
     world_->setLevelTotal(level_.totalEnemies);
+    world_->setHealthMultiplier(level_.enemyHealthMult);
 
     ls::Base& base = world_->base();
     base.maxHealth += effects_.baseBonusHp;
@@ -344,43 +339,6 @@ void Session::cycleTargeting() {
     syncWorldTurrets();
 }
 
-int Session::hardpointCount() const {
-    return static_cast<int>(level_.map.hardpoints.size()) +
-           (effects_.extraHardpoint ? 1 : 0);
-}
-
-Vec2 Session::hardpointAt(int index) const {
-    const int base = static_cast<int>(level_.map.hardpoints.size());
-    if (index < 0 || index >= hardpointCount()) return Vec2{0.0f, 0.0f};
-    // The bonus hardpoint from the tree sits on the base itself: a last line
-    // of defence rather than a fifth position on the approach.
-    if (index >= base) return level_.map.baseCenter();
-    return level_.map.hardpoints[static_cast<size_t>(index)];
-}
-
-int Session::turretAtHardpoint(int index) const {
-    const Vec2 hp = hardpointAt(index);
-    for (size_t i = 0; i < loadout_.size(); ++i) {
-        if (distanceSq(loadout_[i].position, hp) < 1.0f) {
-            return static_cast<int>(i);
-        }
-    }
-    return -1;
-}
-
-int Session::hardpointNear(Vec2 worldPos, float radius) const {
-    int best = -1;
-    float bestD = radius * radius;
-    for (int i = 0; i < hardpointCount(); ++i) {
-        const float d = distanceSq(hardpointAt(i), worldPos);
-        if (d <= bestD) {
-            bestD = d;
-            best = i;
-        }
-    }
-    return best;
-}
-
 void Session::toggleTurretAt(Vec2 worldPos, float radius) {
     if (phase_ != Phase::Prepare) return;
 
@@ -404,11 +362,21 @@ void Session::removeTurretAt(Vec2 worldPos, float radius) {
     recallTurret(turretIndexAt(worldPos, radius));
 }
 
-void Session::fillEmptyHardpoints() {
-    // Fills the suggested emplacements from whatever is spare, most numerous
-    // kind first, so one keypress produces a sensible default arrangement.
-    for (int i = 0; i < hardpointCount(); ++i) {
-        if (turretAtHardpoint(i) >= 0) continue;
+void Session::autoDeploy() {
+    // The "I do not want to arrange this" button. Everything still in the
+    // crate goes out around the map's deploy anchor; a player who does want
+    // to arrange it drags them where they belong.
+    int spare = 0;
+    for (int k = 0; k < 3; ++k) {
+        spare += static_cast<int>(available(static_cast<TurretKind>(k)));
+    }
+    if (spare <= 0) return;
+
+    const std::vector<Vec2> spots =
+        defaultDeployPositions(level_.map, turretCount() + spare);
+    for (const Vec2& at : spots) {
+        if (!canPlaceAt(at)) continue;
+
         TurretKind kind = selectedKind_;
         if (available(kind) == 0u) {
             bool found = false;
@@ -421,42 +389,7 @@ void Session::fillEmptyHardpoints() {
             }
             if (!found) break;
         }
-        const Vec2 at = hardpointAt(i);
-        if (!canPlaceAt(at)) continue;
         loadout_.push_back(makeTurret(kind, at, effects_));
-    }
-    syncWorldTurrets();
-}
-
-void Session::autoDeploy() {
-    fillEmptyHardpoints();
-
-    // Anything still in the crate goes on a ring around the emplacements,
-    // widening until it finds room. Not clever — deliberately: this is the
-    // "I do not want to think about it" button, and a player who does want
-    // to think about it drags them where they belong.
-    for (int k = 0; k < 3; ++k) {
-        const auto kind = static_cast<TurretKind>(k);
-        if (!kindUnlocked(kind)) continue;
-        while (available(kind) > 0u) {
-            bool placedOne = false;
-            for (float radius = 34.0f; radius <= 200.0f && !placedOne;
-                 radius += 26.0f) {
-                for (int step = 0; step < 12 && !placedOne; ++step) {
-                    const float angle =
-                        static_cast<float>(step) * 0.5235987756f;   // 30 deg
-                    for (int h = 0; h < hardpointCount() && !placedOne; ++h) {
-                        const Vec2 at{
-                            hardpointAt(h).x + std::cos(angle) * radius,
-                            hardpointAt(h).y + std::sin(angle) * radius};
-                        if (!canPlaceAt(at)) continue;
-                        loadout_.push_back(makeTurret(kind, at, effects_));
-                        placedOne = true;
-                    }
-                }
-            }
-            if (!placedOne) return;   // nowhere left to put anything
-        }
     }
     syncWorldTurrets();
 }

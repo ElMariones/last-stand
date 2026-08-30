@@ -115,6 +115,7 @@ BalanceReport runBalance(int runs, int levelIndex) {
         run.totalEnemies = session.result().totalEnemies;
         run.seconds = session.telemetry().elapsedSeconds();
         run.payout = session.payout().scrap;
+        run.multiplier = session.payout().multiplier;
 
         session.openTree();
         run.bought = spendEverything(session);
@@ -135,7 +136,7 @@ BalanceReport runBalance(int runs, int levelIndex) {
         // A cleared level sends the player onward, which is the flow the
         // economy actually has to support: arrive at Level 2 with the tree
         // Level 1 paid for, not from scratch.
-        if (run.victory && session.levelIndex() < 2) {
+        if (run.victory && session.levelIndex() < kLevelCount - 1) {
             session.selectLevel(session.levelIndex() + 1);
         }
     }
@@ -143,12 +144,13 @@ BalanceReport runBalance(int runs, int levelIndex) {
 }
 
 void printBalance(const BalanceReport& report) {
-    std::printf("run  result   kills        time   payout  bought  scrap\n");
+    std::printf(
+        "run  sector  result   kills        time   payout  x     bought  scrap\n");
     for (const BalanceRun& r : report.runs) {
-        std::printf("%3d  %-7s  %5u/%-5u %5.0fs  %6u  %6d  %5u\n", r.index,
-                    r.victory ? "CLEAR" : "loss", r.kills, r.totalEnemies,
-                    static_cast<double>(r.seconds), r.payout, r.bought,
-                    r.scrapAfter);
+        std::printf("%3d  %6d  %-7s  %5u/%-5u %5.0fs  %7u  %.2f  %5d  %6u\n",
+                    r.index, r.level + 1, r.victory ? "CLEAR" : "loss", r.kills,
+                    r.totalEnemies, static_cast<double>(r.seconds), r.payout,
+                    static_cast<double>(r.multiplier), r.bought, r.scrapAfter);
     }
     std::printf("\nfirst purchase after run  %d\n", report.runsToFirstPurchase);
     std::printf("first clear after run     %d\n", report.runsToFirstClear);

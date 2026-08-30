@@ -16,7 +16,9 @@ namespace {
 BattleTelemetry runLevel1(int ticks = 6000) {
     const ls::Level level = ls::makeLevel1();
     ls::World world{level.map, 0x5EEDu};
-    for (const ls::Vec2& hp : level.map.hardpoints) world.placeTurret(hp);
+    for (const ls::Vec2& p : ls::defaultDeployPositions(level.map, 4)) {
+        world.placeTurret(p);
+    }
     world.setLevelTotal(level.totalEnemies);
 
     BattleTelemetry t;
@@ -132,7 +134,9 @@ TEST_CASE("a dense breach is diagnosed as a density problem") {
     // through a Level 3 run: Tanks present means armour piercing leads.
     const ls::Level level = ls::makeLevel3();
     ls::World world{level.map, 0x5EEFu};
-    for (const ls::Vec2& hp : level.map.hardpoints) world.placeTurret(hp);
+    for (const ls::Vec2& p : ls::defaultDeployPositions(level.map, 4)) {
+        world.placeTurret(p);
+    }
     world.setLevelTotal(level.totalEnemies);
 
     BattleTelemetry t;

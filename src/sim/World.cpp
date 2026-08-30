@@ -62,7 +62,9 @@ void World::spawnWave(uint32_t count, EnemyType type) {
             map_.grid.cellCenterAt(map_.spawnCells[static_cast<size_t>(pick)]);
         const Vec2 pos{centre.x + rng_.nextRange(-jitter, jitter),
                        centre.y + rng_.nextRange(-jitter, jitter)};
-        if (enemies_.spawn(pos, type) == EnemyPool::kInvalid) return;
+        const uint32_t idx = enemies_.spawn(pos, type);
+        if (idx == EnemyPool::kInvalid) return;
+        enemies_.health[idx] *= healthMult_;
         ++spawned_;
     }
 }
@@ -90,7 +92,7 @@ void World::tick(float dt) {
     // far less than either consumer querying stale cells would cost in
     // correctness.
     hash_.build(enemies_.position, enemies_.count());
-    updateMovement(enemies_, field_, hash_, dt, movement_, pushScratch_);
+    updateMovement(enemies_, map_, field_, hash_, dt, movement_, pushScratch_);
     hash_.build(enemies_.position, enemies_.count());
 
     // Age tracers before combat so brand-new ones aren't aged this tick.

@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "app/Balance.h"
+#include "gameplay/Level.h"
 
 // The economy has a shape, and the shape is the design: lose the first run,
 // be able to buy something anyway, see the number go up nearly every run, and
@@ -61,29 +62,48 @@ TEST_CASE("the power delta across a session is enormous, not incremental") {
     CHECK(r.peakKills >= r.runs[0].kills * 20u);
 }
 
-TEST_CASE("all three sectors are reachable and clearable") {
-    const ls::BalanceReport r = ls::runBalance(16);
+TEST_CASE("the whole campaign is reachable and clearable") {
+    // Every sector must be beatable by a player who follows the game's own
+    // advice. A sector nobody can clear is content that does not exist.
+    const ls::BalanceReport r = ls::runBalance(30);
     int deepest = 0;
-    bool clearedDeepest = false;
+    bool clearedLast = false;
     for (const ls::BalanceRun& run : r.runs) {
         if (run.level > deepest) deepest = run.level;
-        if (run.level == 2 && run.victory) clearedDeepest = true;
+        if (run.level == ls::kLevelCount - 1 && run.victory) clearedLast = true;
     }
-    CHECK(deepest == 2);
-    CHECK(clearedDeepest);
+    CHECK(deepest == ls::kLevelCount - 1);
+    CHECK(clearedLast);
 }
 
-TEST_CASE("replaying a cleared sector pays progressively less") {
-    // GDD 8.4's anti-grind rule, observed end to end rather than unit-tested
-    // on the formula.
-    const ls::BalanceReport r = ls::runBalance(20);
-    uint32_t firstClearPayout = 0u;
-    uint32_t lastRepeatPayout = 0u;
+TEST_CASE("later sectors are not free: most of them cost a retry") {
+    // Sectors that fall on the first attempt every time are filler. The
+    // campaign should ask for at least a couple of second tries.
+    const ls::BalanceReport r = ls::runBalance(24);
+    int lossesAfterFirstSector = 0;
     for (const ls::BalanceRun& run : r.runs) {
-        if (run.level != 2 || !run.victory) continue;
-        if (firstClearPayout == 0u) firstClearPayout = run.payout;
-        lastRepeatPayout = run.payout;
+        if (run.level > 0 && !run.victory) ++lossesAfterFirstSector;
     }
-    REQUIRE(firstClearPayout > 0u);
-    CHECK(lastRepeatPayout < firstClearPayout);
+    CHECK(lossesAfterFirstSector >= 4);
+}
+
+TEST_CASE("replaying a cleared sector pays a shrinking multiplier") {
+    // GDD 8.4's anti-grind rule, observed end to end. Tested on the
+    // multiplier rather than the gross payout: a player who keeps buying
+    // Economy can out-earn the decay for a while, and that is fine — the
+    // rule is that the same sector is worth less each time, not that the
+    // player's income can never grow.
+    const ls::BalanceReport r = ls::runBalance(30);
+    float firstClear = 0.0f;
+    float lastRepeat = 0.0f;
+    int clears = 0;
+    for (const ls::BalanceRun& run : r.runs) {
+        if (run.level != ls::kLevelCount - 1 || !run.victory) continue;
+        if (clears == 0) firstClear = run.multiplier;
+        lastRepeat = run.multiplier;
+        ++clears;
+    }
+    REQUIRE(clears >= 3);
+    CHECK(firstClear == doctest::Approx(1.0f));
+    CHECK(lastRepeat < firstClear);
 }

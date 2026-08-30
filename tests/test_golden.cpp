@@ -47,7 +47,9 @@ uint64_t hordeOnly() {
 uint64_t level1Battle() {
     const ls::Level level = ls::makeLevel1();
     ls::World w{level.map, 0x5EEDu};
-    for (const ls::Vec2& hp : level.map.hardpoints) w.placeTurret(hp);
+    for (const ls::Vec2& p : ls::defaultDeployPositions(level.map, 4)) {
+        w.placeTurret(p);
+    }
     w.setLevelTotal(level.totalEnemies);
 
     ls::SpawnDirector director;
@@ -66,8 +68,9 @@ uint64_t level3MixedBuild() {
     ls::World w{level.map, 0x5EEFu};
     w.setLevelTotal(level.totalEnemies);
 
-    for (size_t i = 0; i < level.map.hardpoints.size(); ++i) {
-        w.placeTurret(level.map.hardpoints[i]);
+    const auto spots = ls::defaultDeployPositions(level.map, 4);
+    for (size_t i = 0; i < spots.size(); ++i) {
+        w.placeTurret(spots[i]);
         ls::Turret& t = w.turrets().back();
         t.armorPierce = 1.5f;
         if (i % 2u == 0u) {
@@ -104,13 +107,15 @@ uint64_t level3MixedBuild() {
 // Recorded on macOS 15 / arm64 / AppleClang, Release AND Debug (they agree,
 // which is the point of -ffp-contract=off).
 //
-// Re-blessed once since M5, deliberately: the economy fix doubled base HP
-// from 1,000 to 2,000, which is real simulation state and appears in the
-// hash. That is exactly the conversation these constants exist to force —
-// a balance change may move them, a rendering or UI change may not.
-constexpr uint64_t kGoldenHorde   = 14084001740661081018ull;
-constexpr uint64_t kGoldenLevel1  = 10523135610880183786ull;
-constexpr uint64_t kGoldenLevel3  = 16397432179880289473ull;
+// Re-blessed twice, both times for a simulation change and never for a
+// cosmetic one — which is the whole point of these constants.
+//   1. The economy fix doubled base HP from 1,000 to 2,000.
+//   2. Movement now collides with walls, the hardpoints are gone so the
+//      standard defence stands somewhere else, and sector 3 is a different
+//      map. All three move every hash.
+constexpr uint64_t kGoldenHorde   = 11714979920487553756ull;
+constexpr uint64_t kGoldenLevel1  = 9923931488049686869ull;
+constexpr uint64_t kGoldenLevel3  = 6759607514454592392ull;
 
 TEST_CASE("golden: 2,000 grunts, 1,000 ticks, movement and separation only") {
     CHECK(report("hordeOnly", hordeOnly(), kGoldenHorde) == kGoldenHorde);

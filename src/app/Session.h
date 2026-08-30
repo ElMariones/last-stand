@@ -109,14 +109,6 @@ public:
     bool     canAffordTurret(TurretKind kind) const;
     bool     buyTurret(TurretKind kind);
 
-    // Suggested emplacements, drawn as a hint. Placement is not limited to
-    // them; F drops one turret on each free one for players who would rather
-    // not think about it.
-    int  hardpointCount() const;
-    Vec2 hardpointAt(int index) const;
-    int  turretAtHardpoint(int index) const;   // loadout index, or -1
-    int  hardpointNear(Vec2 worldPos, float radius) const;
-
     int  turretCount() const { return static_cast<int>(loadout_.size()); }
     const std::vector<Turret>& loadout() const { return loadout_; }
 
@@ -138,7 +130,6 @@ public:
     // then outward from them. One keypress for players who would rather not
     // arrange anything, and the harness's placement policy.
     void autoDeploy();
-    void fillEmptyHardpoints();
     void clearLoadout();
 
     // Time controls (1x/2x/4x).

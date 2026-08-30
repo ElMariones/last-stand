@@ -25,9 +25,9 @@ TEST_CASE("Level 1 schedule is non-empty, sorted, and starts at time 0") {
     CHECK(sum == lvl.totalEnemies);
 }
 
-TEST_CASE("Level 1 map has hardpoints to defend from") {
+TEST_CASE("Level 1 map has somewhere to defend from") {
     const Level lvl = ls::makeLevel1();
-    CHECK(lvl.map.hardpoints.size() == 4u);
+    CHECK(ls::defaultDeployPositions(lvl.map, 4).size() == 4u);
 }
 
 TEST_CASE("economy constants are non-negative and sane") {

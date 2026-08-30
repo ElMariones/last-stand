@@ -28,12 +28,12 @@ LevelMap makeOpenMap() {
 
 // Separation reads the hash, so every step has to rebuild it over the
 // positions it is about to consume — exactly what World::tick does.
-void step(EnemyPool& p, const FlowField& f, SpatialHash& h,
+void step(EnemyPool& p, const LevelMap& m, const FlowField& f, SpatialHash& h,
           const MovementParams& params, int ticks = 1) {
     std::vector<Vec2> push(EnemyPool::kCapacity, Vec2{0.0f, 0.0f});
     for (int i = 0; i < ticks; ++i) {
         h.build(p.position, p.count());
-        ls::updateMovement(p, f, h, 1.0f / 60.0f, params, push);
+        ls::updateMovement(p, m, f, h, 1.0f / 60.0f, params, push);
     }
 }
 
@@ -52,7 +52,7 @@ TEST_CASE("an enemy moves toward the base") {
 
     MovementParams params;
     SpatialHash h = makeHash();
-    step(p, f, h, params, 10);
+    step(p, m, f, h, params, 10);
 
     CHECK(p.position[0].x > startX);
 }
@@ -68,7 +68,7 @@ TEST_CASE("prevPosition captures the position before the move") {
 
     MovementParams params;
     SpatialHash h = makeHash();
-    step(p, f, h, params);
+    step(p, m, f, h, params);
 
     CHECK(p.prevPosition[0].x == doctest::Approx(start.x));
     CHECK(p.position[0].x != doctest::Approx(start.x));
@@ -90,7 +90,7 @@ TEST_CASE("per-enemy speed governs how far enemies travel") {
     params.separationRadius = 0.0f;          // no separation to muddy distances
     params.separationStrength = 0.0f;
     SpatialHash h = makeHash();
-    step(p, f, h, params, 30);
+    step(p, m, f, h, params, 30);
 
     const float gruntTravel = ls::distanceSq(p.position[0], g0);
     const float runnerTravel = ls::distanceSq(p.position[1], r0);
@@ -109,7 +109,7 @@ TEST_CASE("distant enemies do not push each other") {
     MovementParams params;
     params.separationRadius = 5.0f;
     SpatialHash h = makeHash();
-    step(p, f, h, params);
+    step(p, m, f, h, params);
 
     // Velocity should be pure flow: magnitude equals the enemy's speed.
     CHECK(ls::length(p.velocity[0]) == doctest::Approx(p.speed[0]).epsilon(0.01));
@@ -128,7 +128,7 @@ TEST_CASE("overlapping enemies push apart") {
     MovementParams params;
     SpatialHash h = makeHash();
     const float before = ls::distanceSq(p.position[0], p.position[1]);
-    step(p, f, h, params, 20);
+    step(p, m, f, h, params, 20);
     const float after = ls::distanceSq(p.position[0], p.position[1]);
 
     CHECK(after > before);
@@ -146,7 +146,7 @@ TEST_CASE("perfectly coincident enemies separate deterministically") {
 
     MovementParams params;
     SpatialHash h = makeHash();
-    step(p, f, h, params, 20);
+    step(p, m, f, h, params, 20);
 
     CHECK(ls::distanceSq(p.position[0], p.position[1]) > 0.01f);
 }
@@ -166,7 +166,7 @@ TEST_CASE("an enemy on an unreachable cell does not drift") {
 
     MovementParams params;
     SpatialHash h = makeHash();
-    step(p, f, h, params, 10);
+    step(p, m, f, h, params, 10);
 
     CHECK(p.position[0].x == doctest::Approx(start.x));
     CHECK(p.position[0].y == doctest::Approx(start.y));
@@ -179,7 +179,7 @@ TEST_CASE("an empty pool is a no-op") {
     EnemyPool p;
     MovementParams params;
     SpatialHash h = makeHash();
-    step(p, f, h, params);
+    step(p, m, f, h, params);
     CHECK(p.count() == 0u);
 }
 
@@ -211,8 +211,8 @@ TEST_CASE("hashed separation visits the same neighbours as the O(n^2) loop") {
 
     SpatialHash hn = makeHash();
     SpatialHash hh = makeHash();
-    step(naive, f, hn, naiveParams, 10);
-    step(hashed, f, hh, hashParams, 10);
+    step(naive, m, f, hn, naiveParams, 10);
+    step(hashed, m, f, hh, hashParams, 10);
 
     REQUIRE(naive.count() == hashed.count());
     for (uint32_t i = 0; i < naive.count(); ++i) {
@@ -236,7 +236,7 @@ TEST_CASE("hashed separation still resolves a dense pile-up") {
 
     MovementParams params;
     SpatialHash h = makeHash();
-    step(p, f, h, params, 60);
+    step(p, m, f, h, params, 60);
 
     // Nobody is still sitting exactly on top of anybody else.
     for (uint32_t i = 0; i < p.count(); ++i) {
@@ -277,8 +277,8 @@ TEST_CASE("a separation radius wider than a hash cell still finds everyone") {
     SpatialHash hn = makeHash();
     SpatialHash hw = makeHash();
     REQUIRE(wideParams.separationRadius > hw.cellSize());
-    step(naive, f, hn, naiveParams, 10);
-    step(wide, f, hw, wideParams, 10);
+    step(naive, m, f, hn, naiveParams, 10);
+    step(wide, m, f, hw, wideParams, 10);
 
     for (uint32_t i = 0; i < naive.count(); ++i) {
         CHECK(wide.position[i].x ==

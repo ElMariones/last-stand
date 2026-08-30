@@ -16,6 +16,7 @@ struct BalanceRun {
     uint32_t totalEnemies = 0u;
     float    seconds      = 0.0f;
     uint32_t payout       = 0u;
+    float    multiplier   = 1.0f;   // the defeat / diminishing-replay factor
     uint32_t scrapAfter   = 0u;
     int      bought       = 0;
     NodeId   lastBought   = NodeId::Damage;

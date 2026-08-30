@@ -67,7 +67,7 @@ TEST_CASE("selecting a level lands in Prepare with the level 1 loadout") {
     CHECK(s.phase() == Phase::Prepare);
     CHECK(s.levelIndex() == 0);
     REQUIRE(s.world() != nullptr);
-    CHECK(s.world()->turrets().size() == s.level().map.hardpoints.size());
+    CHECK(s.world()->turrets().size() == 4u);   // the starting arsenal
 }
 
 TEST_CASE("a battle runs to an end state and pays out") {
@@ -280,57 +280,52 @@ TEST_CASE("corpses and particles appear where enemies die") {
     CHECK(peakParticles <= ls::ParticlePool::kCapacity);
 }
 
-TEST_CASE("clicking a hardpoint always visibly does something") {
+TEST_CASE("clicking a turret always visibly does something") {
     // The reported bug: every slot arrived holding a Machine Gun, the other
     // kinds were locked, and a click replaced a Machine Gun with an identical
     // Machine Gun. The player saw a dead mouse button.
     Session s = freshSession();
-    REQUIRE(s.hardpointCount() == 4);
     REQUIRE(s.turretCount() == 4);
 
-    const ls::Vec2 hp = s.hardpointAt(0);
-    REQUIRE(s.turretAtHardpoint(0) >= 0);
+    const ls::Vec2 at = s.loadout().front().position;
 
-    // Same kind on an occupied slot clears it...
-    s.toggleTurretAt(hp, 28.0f);
-    CHECK(s.turretAtHardpoint(0) < 0);
+    // Same kind on an occupied spot recalls it...
+    s.toggleTurretAt(at, 16.0f);
     CHECK(s.turretCount() == 3);
+    CHECK(s.available(ls::TurretKind::MachineGun) == 1u);
 
-    // ...and clicking again puts it back.
-    s.toggleTurretAt(hp, 28.0f);
-    CHECK(s.turretAtHardpoint(0) >= 0);
+    // ...and clicking the now-empty ground puts it back.
+    s.toggleTurretAt(at, 16.0f);
     CHECK(s.turretCount() == 4);
 }
 
 TEST_CASE("a click that misses every hardpoint changes nothing") {
     Session s = freshSession();
     const int before = s.turretCount();
-    s.toggleTurretAt(ls::Vec2{5.0f, 5.0f}, 28.0f);
+    // Off the map entirely: nothing to grab and nowhere to deploy.
+    s.toggleTurretAt(ls::Vec2{-40.0f, -40.0f}, 16.0f);
     CHECK(s.turretCount() == before);
 }
 
-TEST_CASE("right-click clears a slot and does nothing to an empty one") {
+TEST_CASE("right-click recalls a turret and does nothing to empty ground") {
     Session s = freshSession();
-    const ls::Vec2 hp = s.hardpointAt(1);
-    s.removeTurretAt(hp, 28.0f);
-    CHECK(s.turretAtHardpoint(1) < 0);
-    s.removeTurretAt(hp, 28.0f);          // idempotent
-    CHECK(s.turretAtHardpoint(1) < 0);
+    const ls::Vec2 at = s.loadout()[1].position;
+    s.removeTurretAt(at, 16.0f);
+    CHECK(s.turretCount() == 3);
+    s.removeTurretAt(at, 16.0f);          // idempotent
+    CHECK(s.turretCount() == 3);
 }
 
-TEST_CASE("fill and clear cover every slot") {
+TEST_CASE("auto-deploy and recall-all are inverses") {
     Session s = freshSession();
     s.clearLoadout();
     CHECK(s.turretCount() == 0);
 
-    s.fillEmptyHardpoints();
-    CHECK(s.turretCount() == s.hardpointCount());
-    for (int i = 0; i < s.hardpointCount(); ++i) {
-        CHECK(s.turretAtHardpoint(i) >= 0);
-    }
-    // Filling an already-full board is not a way to exceed the slot count.
-    s.fillEmptyHardpoints();
-    CHECK(s.turretCount() == s.hardpointCount());
+    s.autoDeploy();
+    CHECK(s.turretCount() == 4);
+    // Auto-deploying again is not a way to conjure turrets you do not own.
+    s.autoDeploy();
+    CHECK(s.turretCount() == 4);
 }
 
 TEST_CASE("a battle can be started with no turrets at all") {
@@ -354,9 +349,10 @@ TEST_CASE("a locked turret kind cannot be selected or placed") {
     s.selectKind(ls::TurretKind::Cannon);
     CHECK(s.selectedKind() == ls::TurretKind::MachineGun);
 
+    const ls::Vec2 open = s.level().map.grid.cellCenter(40, 30);
     s.clearLoadout();
-    s.toggleTurretAt(s.hardpointAt(0), 28.0f);
-    REQUIRE(s.turretAtHardpoint(0) >= 0);
+    s.toggleTurretAt(open, 16.0f);
+    REQUIRE(s.turretCount() == 1);
     CHECK(s.world()->turrets().front().kind == ls::TurretKind::MachineGun);
 }
 
@@ -442,7 +438,8 @@ TEST_CASE("you cannot deploy what you do not own") {
 TEST_CASE("dragging moves a turret, and an illegal drop is refused") {
     Session s = freshSession();
     const ls::Vec2 from = s.loadout().front().position;
-    const ls::Vec2 to = s.level().map.grid.cellCenter(40, 30);
+    const ls::Vec2 to = s.level().map.grid.cellCenter(52, 32);
+    REQUIRE(ls::distanceSq(from, to) > 1.0f);
 
     REQUIRE(s.moveTurret(0, to));
     CHECK(s.loadout().front().position.x == doctest::Approx(to.x));
