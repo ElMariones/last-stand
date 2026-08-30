@@ -20,14 +20,21 @@ constexpr uint64_t kFnvPrime  = 1099511628211ULL;
 // Below 12 the curve flattens while the cell array quadruples, so 12 it is.
 constexpr float    kHashCell   = 12.0f;
 
-inline void hashFloat(uint64_t& h, float v) {
-    uint32_t bits = 0u;
-    std::memcpy(&bits, &v, sizeof(bits));
-    for (int b = 0; b < 4; ++b) {
-        h ^= static_cast<uint64_t>((bits >> (b * 8)) & 0xFFu);
+inline void hashBytes(uint64_t& h, const void* data, size_t n) {
+    const auto* p = static_cast<const unsigned char*>(data);
+    for (size_t i = 0; i < n; ++i) {
+        h ^= static_cast<uint64_t>(p[i]);
         h *= kFnvPrime;
     }
 }
+
+inline void hashFloat(uint64_t& h, float v) {
+    uint32_t bits = 0u;
+    std::memcpy(&bits, &v, sizeof(bits));
+    hashBytes(h, &bits, sizeof(bits));
+}
+
+inline void hashU64(uint64_t& h, uint64_t v) { hashBytes(h, &v, sizeof(v)); }
 
 }  // namespace
 
@@ -111,16 +118,34 @@ void World::tick(float dt) {
 }
 
 uint64_t World::stateHash() const {
+    // Everything a replay has to reproduce. The golden-hash regression test
+    // (tests/test_golden.cpp) pins this value, so anything left out here is
+    // something that test cannot catch drifting.
     uint64_t h = kFnvOffset;
     const uint32_t n = enemies_.count();
+    hashU64(h, n);
+    hashU64(h, ticks_);
+    hashU64(h, spawned_);
+    hashU64(h, totalKills_);
+    hashU64(h, totalArrived_);
+    hashU64(h, totalShots_);
+
     for (uint32_t i = 0; i < n; ++i) {
         hashFloat(h, enemies_.position[i].x);
         hashFloat(h, enemies_.position[i].y);
+        hashFloat(h, enemies_.velocity[i].x);
+        hashFloat(h, enemies_.velocity[i].y);
         hashFloat(h, enemies_.health[i]);
         hashFloat(h, enemies_.burnDps[i]);
+        hashFloat(h, enemies_.burnTtl[i]);
+        hashBytes(h, &enemies_.type[i], sizeof(uint8_t));
     }
     for (const Turret& t : turrets_) {
         hashFloat(h, t.cooldown);
+        hashFloat(h, t.overchargeTtl);
+        hashFloat(h, t.overheatTtl);
+        hashU64(h, t.shotsFired);
+        hashU64(h, t.kills);
     }
     hashFloat(h, base_.health);
     return h;

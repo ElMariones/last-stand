@@ -48,6 +48,16 @@ function(laststand_set_warnings target)
     )
 endfunction()
 
+# Determinism (GDD 14.6). Without this the compiler is free to contract
+# a*b+c into a single fused multiply-add, which rounds ONCE instead of twice
+# — so the same source produces different floats at -O0 and -O2, and the
+# golden-hash regression test would only ever pass in the configuration it
+# was recorded in. Turning contraction off costs a little arithmetic
+# throughput and buys a simulation that replays across build types.
+function(laststand_set_determinism target)
+    target_compile_options(${target} PRIVATE -ffp-contract=off)
+endfunction()
+
 # --- Core library ----------------------------------------------------------
 add_library(laststand_core STATIC
     src/math/Rng.cpp
@@ -75,12 +85,14 @@ add_library(laststand_core STATIC
 )
 target_include_directories(laststand_core PUBLIC src)
 laststand_set_warnings(laststand_core)
+laststand_set_determinism(laststand_core)
 target_link_libraries(laststand_core PUBLIC raylib)
 
 # --- Executable ------------------------------------------------------------
 add_executable(laststand src/main.cpp)
 target_link_libraries(laststand PRIVATE laststand_core)
 laststand_set_warnings(laststand)
+laststand_set_determinism(laststand)
 
 # --- Tests -----------------------------------------------------------------
 enable_testing()
@@ -110,9 +122,12 @@ add_executable(laststand_tests
     tests/test_savegame.cpp
     tests/test_session.cpp
     tests/test_lod.cpp
+    tests/test_golden.cpp
+    tests/test_noalloc.cpp
 )
 target_link_libraries(laststand_tests PRIVATE laststand_core doctest::doctest)
 laststand_set_warnings(laststand_tests)
+laststand_set_determinism(laststand_tests)
 
 add_test(NAME unit COMMAND laststand_tests)
 
