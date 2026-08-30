@@ -11,9 +11,9 @@ constexpr double kCostGrowth = 1.35;
 size_t idx(NodeId n) { return static_cast<size_t>(n); }
 
 constexpr std::array<uint32_t, kNodeCount> kBaseCost = {
-    40u,   // Damage
-    40u,   // FireRate
-    35u,   // Range
+    30u,   // Damage
+    30u,   // FireRate
+    25u,   // Range
     50u,   // BaseHp
     60u,   // BaseRegen
     45u,   // Economy

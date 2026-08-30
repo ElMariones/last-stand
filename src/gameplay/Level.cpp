@@ -41,7 +41,7 @@ Level makeLevel1() {
     Level lvl;
     lvl.name = "The Outskirts";
     lvl.recommendedPower = 10u;
-    lvl.killValue = 3.0f;
+    lvl.killValue = 4.0f;
     lvl.depthBonusWeight = 100.0f;
     lvl.map = makeM1Map();
 
@@ -63,7 +63,7 @@ Level makeLevel2() {
     Level lvl;
     lvl.name = "Refinery Gate";
     lvl.recommendedPower = 25u;
-    lvl.killValue = 3.0f;
+    lvl.killValue = 4.0f;
     lvl.depthBonusWeight = 250.0f;
     lvl.map = makeM1Map();
 
@@ -81,7 +81,7 @@ Level makeLevel3() {
     Level lvl;
     lvl.name = "The Narrows";
     lvl.recommendedPower = 60u;
-    lvl.killValue = 3.0f;
+    lvl.killValue = 4.0f;
     lvl.depthBonusWeight = 600.0f;
     lvl.map = makeM1Map();
 

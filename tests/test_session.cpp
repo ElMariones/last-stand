@@ -244,7 +244,9 @@ TEST_CASE("a battle emits the events the audio engine listens for") {
     Session s = freshSession();
     s.startBattle();
     ls::FrameEvents total;
-    for (int i = 0; i < 2400 && s.phase() == Phase::Battle; ++i) {
+    // The base holds for roughly 45 seconds now, so give the loop room to
+    // actually reach the end of the battle.
+    for (int i = 0; i < 6000 && s.phase() == Phase::Battle; ++i) {
         s.updateBattle(1.0f / 60.0f);
         const ls::FrameEvents ev = s.takeEvents();
         total.kills += ev.kills;

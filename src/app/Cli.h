@@ -27,6 +27,11 @@ struct Options {
     // deleted, so the M5 baseline stays re-measurable on any machine.
     bool naiveSeparation = false;
 
+    // >0: play the loop headlessly for this many runs with an auto-player and
+    // print the progression curve. The economy's tuning instrument.
+    int      balanceRuns  = 0;
+    int      balanceLevel = 0;
+
     // >0: open a window, spawn this many enemies and time `renderTicks`
     // frames of the render path. The LOD numbers come from here.
     uint32_t renderBench  = 0u;

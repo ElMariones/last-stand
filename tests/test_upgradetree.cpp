@@ -6,33 +6,41 @@ using ls::UpgradeTree;
 
 TEST_CASE("cost follows base * 1.35^n") {
     UpgradeTree t;
-    CHECK(t.cost(NodeId::Damage) == 40u);     // 40 * 1.35^0
+    CHECK(t.cost(NodeId::Damage) == 30u);     // 30 * 1.35^0
     CHECK(t.cost(NodeId::BaseRegen) == 60u);
     CHECK(t.cost(NodeId::Economy) == 45u);
 
     uint32_t scrap = 100000u;
     t.purchase(NodeId::Damage, scrap);
-    CHECK(t.cost(NodeId::Damage) == 54u);     // 40 * 1.35^1
+    CHECK(t.cost(NodeId::Damage) == 41u);     // 30 * 1.35^1 (40.5 rounds to 41)
     t.purchase(NodeId::Damage, scrap);
-    CHECK(t.cost(NodeId::Damage) == 73u);     // 40 * 1.35^2 (72.9 rounds to 73)
+    CHECK(t.cost(NodeId::Damage) == 55u);     // 30 * 1.35^2 (54.675)
     t.purchase(NodeId::Damage, scrap);
-    CHECK(t.cost(NodeId::Damage) == 98u);     // 40 * 1.35^3 (98.415 rounds to 98)
+    CHECK(t.cost(NodeId::Damage) == 74u);     // 30 * 1.35^3 (73.81)
+}
+
+TEST_CASE("the first tier of stat nodes is affordable from one lost run") {
+    // The economy depends on this: a first defeat pays about 31 Scrap, and if
+    // nothing costs less than that the loop never starts (GDD pillar 2).
+    const UpgradeTree t;
+    CHECK(t.cost(NodeId::Range) <= 31u);
+    CHECK(t.cost(NodeId::Damage) <= 31u);
 }
 
 TEST_CASE("purchase deducts scrap and increments level") {
     UpgradeTree t;
     uint32_t scrap = 100u;
     CHECK(t.purchase(NodeId::Damage, scrap));
-    CHECK(scrap == 60u);
+    CHECK(scrap == 70u);
     CHECK(t.level(NodeId::Damage) == 1u);
-    CHECK(t.totalSpent() == 40u);
+    CHECK(t.totalSpent() == 30u);
 }
 
 TEST_CASE("an unaffordable purchase leaves scrap untouched") {
     UpgradeTree t;
-    uint32_t scrap = 30u;
-    CHECK_FALSE(t.purchase(NodeId::Damage, scrap));   // cost 40
-    CHECK(scrap == 30u);
+    uint32_t scrap = 20u;
+    CHECK_FALSE(t.purchase(NodeId::Damage, scrap));   // cost 30
+    CHECK(scrap == 20u);
     CHECK(t.level(NodeId::Damage) == 0u);
     CHECK(t.totalSpent() == 0u);
 }
@@ -42,7 +50,7 @@ TEST_CASE("respecAll refunds everything and zeroes the tree") {
     uint32_t scrap = 1000u;
     t.purchase(NodeId::Damage, scrap);
     t.purchase(NodeId::BaseHp, scrap);
-    t.purchase(NodeId::Damage, scrap);   // 40 + 54 = 94 spent on Damage
+    t.purchase(NodeId::Damage, scrap);   // 30 + 41 = 71 spent on Damage
 
     const uint32_t spent = t.totalSpent();
     REQUIRE(spent > 0u);

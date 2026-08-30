@@ -91,6 +91,7 @@ add_library(laststand_core STATIC
     src/ui/Widgets.cpp
     src/ui/Screens.cpp
     src/app/Cli.cpp
+    src/app/Balance.cpp
     src/app/Bench.cpp
     src/app/Session.cpp
 )
@@ -136,6 +137,7 @@ add_executable(laststand_tests
     tests/test_fx.cpp
     tests/test_audio.cpp
     tests/test_telemetry.cpp
+    tests/test_balance.cpp
     tests/test_golden.cpp
     tests/test_noalloc.cpp
 )

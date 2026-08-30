@@ -36,6 +36,13 @@ Options parseArgs(int argc, const char* const* argv) {
             o.help = true;
         } else if (std::strcmp(a, "--naive-separation") == 0) {
             o.naiveSeparation = true;
+        } else if (std::strcmp(a, "--balance") == 0) {
+            uint64_t v = 10u;
+            takeValue(argc, argv, i, v);
+            o.balanceRuns = static_cast<int>(v);
+        } else if (std::strcmp(a, "--balance-level") == 0) {
+            uint64_t v = 0u;
+            if (takeValue(argc, argv, i, v)) o.balanceLevel = static_cast<int>(v);
         } else if (std::strcmp(a, "--no-lod") == 0) {
             o.noLod = true;
         } else if (std::strcmp(a, "--no-batch") == 0) {
@@ -85,6 +92,8 @@ const char* usageText() {
         "  --stage <name>      stage label for the sweep rows (default stage0)\n"
         "  --notes <text>      notes column for the sweep rows\n"
         "  --naive-separation  use the O(n^2) Stage 0 separation loop\n"
+        "  --balance <runs>    auto-play the loop and print the economy curve\n"
+        "  --balance-level <n> level index for --balance (default 0)\n"
         "  --render-bench <n>  open a window, draw n enemies, time the frames\n"
         "  --no-lod            draw every enemy at the lowest detail tier\n"
         "  --no-batch          one raylib draw call per enemy (the M4 path)\n"

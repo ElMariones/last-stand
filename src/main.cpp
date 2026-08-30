@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "app/Balance.h"
 #include "app/Bench.h"
 #include "app/Cli.h"
 #include "app/Session.h"
@@ -122,6 +123,10 @@ int main(int argc, char** argv) {
     }
     if (options.sweepPath != nullptr) {
         return ls::runSweep(options) ? 0 : 1;
+    }
+    if (options.balanceRuns > 0) {
+        ls::printBalance(ls::runBalance(options.balanceRuns, options.balanceLevel));
+        return 0;
     }
     if (options.bench || options.noRender) {
         const ls::BenchResult r = ls::runBench(options);

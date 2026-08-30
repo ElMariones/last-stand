@@ -102,10 +102,15 @@ uint64_t level3MixedBuild() {
 }  // namespace
 
 // Recorded on macOS 15 / arm64 / AppleClang, Release AND Debug (they agree,
-// which is the point of -ffp-contract=off), at M5 stage 3.
-constexpr uint64_t kGoldenHorde   = 14206443355554437178ull;
-constexpr uint64_t kGoldenLevel1  = 7495588702298017498ull;
-constexpr uint64_t kGoldenLevel3  = 16274990564986933313ull;
+// which is the point of -ffp-contract=off).
+//
+// Re-blessed once since M5, deliberately: the economy fix doubled base HP
+// from 1,000 to 2,000, which is real simulation state and appears in the
+// hash. That is exactly the conversation these constants exist to force —
+// a balance change may move them, a rendering or UI change may not.
+constexpr uint64_t kGoldenHorde   = 14084001740661081018ull;
+constexpr uint64_t kGoldenLevel1  = 10523135610880183786ull;
+constexpr uint64_t kGoldenLevel3  = 16397432179880289473ull;
 
 TEST_CASE("golden: 2,000 grunts, 1,000 ticks, movement and separation only") {
     CHECK(report("hordeOnly", hordeOnly(), kGoldenHorde) == kGoldenHorde);
