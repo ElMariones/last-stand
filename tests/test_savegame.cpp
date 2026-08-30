@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 using ls::SaveData;
 
@@ -15,7 +16,26 @@ SaveData makeData() {
         d.bestKills[i] = static_cast<uint32_t>(100u + i);
         d.clearCounts[i] = static_cast<uint32_t>(i);
     }
+    d.settings.masterVolume = 42;
+    d.settings.sfxVolume = 17;
+    d.settings.musicVolume = 3;
+    d.settings.shakeScale = 175;
+    d.settings.defaultTimeScale = 4;
+    d.settings.hitstop = false;
+    d.settings.damageNumbers = true;
+    d.settings.levelOfDetail = false;
+    d.settings.debugOverlay = true;
     return d;
+}
+
+// A version 1 payload: the v2 bytes with the version word rewritten and the
+// settings block chopped off. This is what a save written before M6 looks
+// like, and it must still load.
+std::vector<uint8_t> makeV1Bytes() {
+    auto bytes = ls::serialize(makeData());
+    bytes[4] = 1u;
+    bytes.resize(4u * (2u + 1u + ls::kNodeCount + 2u * ls::kSaveLevels));
+    return bytes;
 }
 }  // namespace
 
@@ -31,6 +51,16 @@ TEST_CASE("serialize then deserialize round-trips every field") {
     CHECK(out.nodeLevels == in.nodeLevels);
     CHECK(out.bestKills == in.bestKills);
     CHECK(out.clearCounts == in.clearCounts);
+
+    CHECK(out.settings.masterVolume == 42);
+    CHECK(out.settings.sfxVolume == 17);
+    CHECK(out.settings.musicVolume == 3);
+    CHECK(out.settings.shakeScale == 175);
+    CHECK(out.settings.defaultTimeScale == 4);
+    CHECK_FALSE(out.settings.hitstop);
+    CHECK(out.settings.damageNumbers);
+    CHECK_FALSE(out.settings.levelOfDetail);
+    CHECK(out.settings.debugOverlay);
 }
 
 TEST_CASE("deserialize rejects a bad magic") {
@@ -48,14 +78,53 @@ TEST_CASE("deserialize rejects a truncated buffer") {
     CHECK_FALSE(ls::deserialize(bytes.data(), bytes.size() - 1u, out));
 }
 
-TEST_CASE("deserialize rejects a version mismatch") {
-    SaveData in = makeData();
-    in.version = 999u;
-    const auto bytes = ls::serialize(in);
+TEST_CASE("deserialize rejects an unknown version") {
+    auto bytes = ls::serialize(makeData());
+    bytes[4] = 99u;               // forge the version word
 
     SaveData out;
     CHECK_FALSE(ls::deserialize(bytes.data(), bytes.size(), out));
-    CHECK(out.version == 999u);   // hint left behind
+    CHECK(out.version == 99u);    // hint left behind
+}
+
+TEST_CASE("a version 1 save still loads, with settings defaulted") {
+    // Refusing to read a player's entire progress because the game grew a
+    // volume slider is the worst possible bug (GDD 14.8).
+    const auto bytes = makeV1Bytes();
+    const SaveData expected = makeData();
+    const ls::Settings defaults;
+
+    SaveData out;
+    REQUIRE(ls::deserialize(bytes.data(), bytes.size(), out));
+
+    CHECK(out.scrap == expected.scrap);
+    CHECK(out.nodeLevels == expected.nodeLevels);
+    CHECK(out.bestKills == expected.bestKills);
+    CHECK(out.clearCounts == expected.clearCounts);
+    CHECK(out.settings.masterVolume == defaults.masterVolume);
+    CHECK(out.settings.hitstop == defaults.hitstop);
+    // Read as v1, written back as v2: the upgrade is one-way and silent.
+    CHECK(out.version == 2u);
+}
+
+TEST_CASE("a v2 file truncated inside the settings block is refused") {
+    const auto bytes = ls::serialize(makeData());
+    SaveData out;
+    CHECK_FALSE(ls::deserialize(bytes.data(), bytes.size() - 8u, out));
+}
+
+TEST_CASE("out-of-range settings are clamped on load, never propagated") {
+    SaveData in = makeData();
+    in.settings.masterVolume = 5000;
+    in.settings.shakeScale = -20;
+    in.settings.defaultTimeScale = 7;
+    const auto bytes = ls::serialize(in);
+
+    SaveData out;
+    REQUIRE(ls::deserialize(bytes.data(), bytes.size(), out));
+    CHECK(out.settings.masterVolume == 100);
+    CHECK(out.settings.shakeScale >= 0);
+    CHECK(out.settings.defaultTimeScale == 1);
 }
 
 TEST_CASE("save then load returns an identical SaveData") {

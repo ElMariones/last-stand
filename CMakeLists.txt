@@ -77,7 +77,12 @@ add_library(laststand_core STATIC
     src/gameplay/SpawnDirector.cpp
     src/gameplay/UpgradeTree.cpp
     src/gameplay/Progression.cpp
+    src/gameplay/Settings.cpp
     src/persist/SaveGame.cpp
+    src/fx/Juice.cpp
+    src/fx/Particles.cpp
+    src/fx/Corpses.cpp
+    src/fx/DamageNumbers.cpp
     src/render/Renderer.cpp
     src/app/Cli.cpp
     src/app/Bench.cpp
@@ -122,6 +127,7 @@ add_executable(laststand_tests
     tests/test_savegame.cpp
     tests/test_session.cpp
     tests/test_lod.cpp
+    tests/test_fx.cpp
     tests/test_golden.cpp
     tests/test_noalloc.cpp
 )
