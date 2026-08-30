@@ -13,6 +13,11 @@ struct BenchResult {
     double   meanMs        = 0.0;
     double   p99Ms         = 0.0;
     uint64_t stateHash     = 0u;
+
+    // Horde submission cost at the last tick, measured headlessly.
+    uint32_t lodTier[3]    = {0u, 0u, 0u};
+    uint32_t lodTriangles  = 0u;
+    uint32_t lodDrawn      = 0u;
 };
 
 BenchResult runBench(const Options& options);

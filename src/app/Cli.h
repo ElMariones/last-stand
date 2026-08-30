@@ -31,6 +31,8 @@ struct Options {
     // frames of the render path. The LOD numbers come from here.
     uint32_t renderBench  = 0u;
     uint64_t renderFrames = 600u;
+    bool     noLod        = false;   // draw every enemy at Shape detail
+    bool     noBatch      = false;   // one raylib draw call per enemy (M4 path)
 };
 
 Options     parseArgs(int argc, const char* const* argv);

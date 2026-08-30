@@ -3,10 +3,15 @@
 #include <string>
 #include <raylib.h>
 
+#include <algorithm>
+#include <vector>
+
 #include "app/Bench.h"
 #include "app/Cli.h"
 #include "app/Session.h"
 #include "core/FixedTimestep.h"
+#include "gameplay/Level.h"
+#include "gameplay/SpawnDirector.h"
 #include "render/Renderer.h"
 
 namespace {
@@ -101,6 +106,96 @@ void drawTree(const ls::Session& s, int selected) {
              x, 680, 16, Color{140, 150, 165, 255});
 }
 
+// Times the render path alone: the simulation runs so the horde is real and
+// moving, but only renderer.draw() is on the clock. Opens a window because
+// there is no way to price draw submission without one; vsync is off so the
+// number is the work, not the display's refresh.
+int runRenderBench(const ls::Options& options) {
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    InitWindow(1280, 720, "LAST STAND - render bench");
+    if (!IsWindowReady()) {
+        std::printf(
+            "no window: --render-bench needs a desktop session.\n"
+            "The headless LOD census in --bench reports submission cost "
+            "without one.\n");
+        return 1;
+    }
+    SetTargetFPS(0);
+
+    ls::Level level;
+    level.name = "render-bench";
+    level.map = ls::makeM1Map();
+    level.schedule = {ls::SpawnEvent{0.0f, options.renderBench}};
+    level.totalEnemies = options.renderBench;
+
+    ls::World world{level.map, options.seed};
+    for (const ls::Vec2& hp : level.map.hardpoints) world.placeTurret(hp);
+    world.setLevelTotal(level.totalEnemies);
+    world.base().maxHealth = 1.0e9f;
+    world.base().health = world.base().maxHealth;
+
+    ls::SpawnDirector director;
+    ls::Renderer renderer;
+    ls::DebugFlags flags;
+    ls::RenderSettings renderSettings;
+    renderSettings.lod = !options.noLod;
+    renderSettings.batched = !options.noBatch;
+    ls::RenderSettings settings;
+    settings.lod = !options.noLod;
+    settings.batched = !options.noBatch;
+
+    std::vector<double> samples;
+    samples.reserve(static_cast<size_t>(options.renderFrames));
+    ls::RenderStats last;
+
+    const float dt = 1.0f / 60.0f;
+    for (uint64_t frame = 0; frame < options.renderFrames &&
+                             !WindowShouldClose(); ++frame) {
+        director.update(world, level, dt);
+        world.tick(dt);
+
+        BeginDrawing();
+        ClearBackground(Color{12, 10, 10, 255});
+        const auto t0 = std::chrono::steady_clock::now();
+        renderer.draw(world, 0.0f, flags, 0.0, 0.0, settings);
+        const auto t1 = std::chrono::steady_clock::now();
+        EndDrawing();
+
+        // The first few frames pay for shader/pipeline warm-up.
+        if (frame >= 30u) {
+            samples.push_back(
+                std::chrono::duration<double, std::milli>(t1 - t0).count());
+        }
+        last = renderer.stats();
+    }
+    CloseWindow();
+
+    if (samples.empty()) {
+        std::printf("no frames sampled\n");
+        return 1;
+    }
+    std::sort(samples.begin(), samples.end());
+    double sum = 0.0;
+    for (const double v : samples) sum += v;
+
+    std::printf("mode           %s%s\n", options.noLod ? "no-lod " : "lod ",
+                options.noBatch ? "no-batch" : "batched");
+    std::printf("frames         %zu\n", samples.size());
+    std::printf("entities       %u\n", last.enemies);
+    std::printf("drawn          %u\n", last.drawn);
+    std::printf("triangles      %u\n", last.triangles);
+    std::printf("batches        %u\n", last.batches);
+    std::printf("tier_full      %u\n", last.tierCount[0]);
+    std::printf("tier_silhouette %u\n", last.tierCount[1]);
+    std::printf("tier_shape     %u\n", last.tierCount[2]);
+    std::printf("draw_mean_ms   %.4f\n",
+                sum / static_cast<double>(samples.size()));
+    std::printf("draw_p99_ms    %.4f\n",
+                samples[static_cast<size_t>(
+                    static_cast<double>(samples.size() - 1) * 0.99)]);
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -121,14 +216,24 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    if (options.renderBench > 0u) return runRenderBench(options);
+
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(1280, 720, "LAST STAND");
+    if (!IsWindowReady()) {
+        std::printf("no window: this build needs a desktop session to run "
+                    "the game. Try --bench for the headless simulation.\n");
+        return 1;
+    }
     SetTargetFPS(0);
 
     ls::Session session(kSavePath);
     ls::FixedTimestep timestep{60.0, 0.25};
     ls::Renderer renderer;
     ls::DebugFlags flags;
+    ls::RenderSettings renderSettings;
+    renderSettings.lod = !options.noLod;
+    renderSettings.batched = !options.noBatch;
 
     ls::Phase prevPhase = ls::Phase::Prepare;
     double lastTickMs = 0.0;
@@ -215,7 +320,7 @@ int main(int argc, char** argv) {
             renderer.draw(*session.world(),
                           static_cast<float>(timestep.alpha()), flags,
                           static_cast<double>(GetFrameTime()) * 1000.0,
-                          lastTickMs);
+                          lastTickMs, renderSettings);
         }
 
         const bool battlePhases = session.phase() == ls::Phase::Battle ||

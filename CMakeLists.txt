@@ -109,6 +109,7 @@ add_executable(laststand_tests
     tests/test_progression.cpp
     tests/test_savegame.cpp
     tests/test_session.cpp
+    tests/test_lod.cpp
 )
 target_link_libraries(laststand_tests PRIVATE laststand_core doctest::doctest)
 laststand_set_warnings(laststand_tests)

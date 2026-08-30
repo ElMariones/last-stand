@@ -36,6 +36,10 @@ Options parseArgs(int argc, const char* const* argv) {
             o.help = true;
         } else if (std::strcmp(a, "--naive-separation") == 0) {
             o.naiveSeparation = true;
+        } else if (std::strcmp(a, "--no-lod") == 0) {
+            o.noLod = true;
+        } else if (std::strcmp(a, "--no-batch") == 0) {
+            o.noBatch = true;
         } else if (std::strcmp(a, "--ticks") == 0) {
             takeValue(argc, argv, i, o.ticks);
         } else if (std::strcmp(a, "--seed") == 0) {
@@ -82,6 +86,8 @@ const char* usageText() {
         "  --notes <text>      notes column for the sweep rows\n"
         "  --naive-separation  use the O(n^2) Stage 0 separation loop\n"
         "  --render-bench <n>  open a window, draw n enemies, time the frames\n"
+        "  --no-lod            draw every enemy at the lowest detail tier\n"
+        "  --no-batch          one raylib draw call per enemy (the M4 path)\n"
         "  --render-frames <n> frames to time in --render-bench (default 600)\n"
         "  --shot <n>          render n ticks, write shot.png, exit\n"
         "  -h, --help          this text\n";

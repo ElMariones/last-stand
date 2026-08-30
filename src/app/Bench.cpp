@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "gameplay/Level.h"
+#include "render/Lod.h"
 #include "gameplay/SpawnDirector.h"
 #include "sim/World.h"
 
@@ -76,6 +77,16 @@ BenchResult runBench(const Options& options) {
     r.arrived = world.totalArrived();
     r.stateHash = world.stateHash();
 
+    // The window is 1280x720 and the world is drawn 1:1 into it.
+    const LodCensus census =
+        lodCensus(world.enemies(), world.hash(),
+                  viewportRect(1280.0f, 720.0f, 24.0f));
+    r.lodTier[0] = census.tier[0];
+    r.lodTier[1] = census.tier[1];
+    r.lodTier[2] = census.tier[2];
+    r.lodTriangles = census.triangles;
+    r.lodDrawn = census.drawn;
+
     if (!samples.empty()) {
         double sum = 0.0;
         for (const double s : samples) sum += s;
@@ -98,6 +109,14 @@ void printBench(const BenchResult& r) {
     std::printf("tick_mean_ms   %.6f\n", r.meanMs);
     std::printf("tick_p99_ms    %.6f\n", r.p99Ms);
     std::printf("state_hash     %llu\n", static_cast<unsigned long long>(r.stateHash));
+    std::printf("lod_tiers      full %u  silhouette %u  shape %u\n",
+                r.lodTier[0], r.lodTier[1], r.lodTier[2]);
+    // What the horde costs to submit, against the two paths that do not
+    // choose: articulate everyone, or articulate no one.
+    const uint32_t allFull =
+        r.lodDrawn * static_cast<uint32_t>(trianglesForTier(LodTier::Full));
+    std::printf("lod_triangles  %u   (all-full %u, all-shape %u)\n",
+                r.lodTriangles, allFull, r.lodDrawn);
 }
 
 bool runSweep(const Options& options) {

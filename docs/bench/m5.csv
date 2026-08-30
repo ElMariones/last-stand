@@ -14,3 +14,8 @@ stage2,500,1200,0.032881,0.040583,cell-pair walk: each interaction once, cell-pa
 stage2,1000,1200,0.075270,0.098334,cell-pair walk: each interaction once, cell-packed positions
 stage2,2000,1200,0.178431,0.221625,cell-pair walk: each interaction once, cell-packed positions
 stage2,5000,1200,0.567655,0.790875,cell-pair walk: each interaction once, cell-packed positions
+stage3,100,1200,0.015664,0.021375,unchanged sim; LOD + batching are render-side
+stage3,500,1200,0.037557,0.046792,unchanged sim; LOD + batching are render-side
+stage3,1000,1200,0.073287,0.092917,unchanged sim; LOD + batching are render-side
+stage3,2000,1200,0.174367,0.216875,unchanged sim; LOD + batching are render-side
+stage3,5000,1200,0.556648,0.787667,unchanged sim; LOD + batching are render-side
