@@ -149,3 +149,6 @@ add_test(NAME unit COMMAND laststand_tests)
 
 add_test(NAME layering
          COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_layering.sh)
+
+add_test(NAME glyphs
+         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tools/check_glyphs.sh)

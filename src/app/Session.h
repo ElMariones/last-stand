@@ -85,11 +85,34 @@ public:
     void abandonBattle();          // Pause -> Menu, no payout
     void selectLevel(int idx);
 
-    // Prepare: turret placement and targeting.
+    // --- Prepare: turret placement -----------------------------------------
     TurretKind selectedKind() const { return selectedKind_; }
     void cycleKind();
+    // Direct selection for the 1/2/3 hotkeys. Silently ignores a locked kind.
+    void selectKind(TurretKind kind);
+    bool isKindUnlocked(TurretKind kind) const { return kindUnlocked(kind); }
     void cycleTargeting();
-    void setTurretAt(Vec2 worldPos, float halfW, float halfH);
+    TargetingMode targetingMode() const;
+
+    // Hardpoints: how many slots this level offers, where they are, and
+    // whether each currently holds a turret. The Prepare screen needs all
+    // three to show the player what they have and what is still empty.
+    int  hardpointCount() const;
+    Vec2 hardpointAt(int index) const;
+    int  turretAtHardpoint(int index) const;   // loadout index, or -1
+    int  turretCount() const { return static_cast<int>(loadout_.size()); }
+    // Nearest hardpoint to a point within `radius`, or -1.
+    int  hardpointNear(Vec2 worldPos, float radius) const;
+
+    // Click behaviour: an empty slot takes the selected kind, a slot holding
+    // a different kind is replaced, and a slot already holding the selected
+    // kind is cleared. Every click therefore visibly does something — which
+    // the old replace-only path did not, since every slot started full of the
+    // only unlocked turret.
+    void toggleTurretAt(Vec2 worldPos, float radius);
+    void removeTurretAt(Vec2 worldPos, float radius);
+    void fillEmptyHardpoints();
+    void clearLoadout();
 
     // Time controls (1x/2x/4x).
     int  timeScale() const { return timeScale_; }
@@ -115,6 +138,15 @@ public:
     void saveNow() const;
 
     uint32_t bestKills() const { return bestKills_[static_cast<size_t>(levelIndex_)]; }
+    uint32_t bestKillsFor(int level) const;
+    uint32_t clearCountFor(int level) const;
+
+    // True when this save holds anything worth continuing. Drives whether the
+    // menu offers CONTINUE or only NEW GAME.
+    bool hasProgress() const;
+    // Wipes Scrap, the tree and every record, keeping the player's options —
+    // nobody wants their volume reset because they restarted the campaign.
+    void newGame();
 
     // --- presentation ------------------------------------------------------
     // Advances everything that runs at frame rate rather than tick rate.

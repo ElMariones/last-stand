@@ -10,8 +10,9 @@ namespace ls::theme {
 
 // --- ground ---------------------------------------------------------------
 constexpr Color kVoid       {  9,  8,  10, 255};   // behind everything
-constexpr Color kGround     { 22, 19,  18, 255};   // walkable floor
-constexpr Color kGroundEdge { 30, 26,  24, 255};
+constexpr Color kGround     { 27, 24,  23, 255};   // walkable floor
+constexpr Color kGroundEdge { 38, 33,  31, 255};   // the grid that gives it scale
+constexpr Color kGroundLine { 46, 40,  36, 255};   // play-area boundary
 constexpr Color kWall       { 46, 38,  34, 255};
 constexpr Color kWallLight  { 92, 62,  40, 255};   // warm rimlight, sun-side
 constexpr Color kWallShadow { 18, 15,  14, 255};

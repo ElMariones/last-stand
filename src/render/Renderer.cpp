@@ -237,6 +237,28 @@ void Renderer::drawTerrain(const World& world, const DebugFlags& flags) {
                    Vector2{grid.worldWidth(), grid.worldHeight()},
                    theme::kGround);
 
+    // A coarse floor grid every four cells. Without it the field is an
+    // undifferentiated dark rectangle and the horde has nothing to move
+    // against, which reads as emptiness rather than as space.
+    for (int cx = 0; cx <= grid.cols(); cx += 4) {
+        const float x = static_cast<float>(cx) * cs;
+        DrawLineV(Vector2{x, 0.0f}, Vector2{x, grid.worldHeight()},
+                  theme::kGroundEdge);
+    }
+    for (int cy = 0; cy <= grid.rows(); cy += 4) {
+        const float y = static_cast<float>(cy) * cs;
+        DrawLineV(Vector2{0.0f, y}, Vector2{grid.worldWidth(), y},
+                  theme::kGroundEdge);
+    }
+    DrawRectangleLinesEx(Rectangle{0.0f, 0.0f, grid.worldWidth(),
+                                   grid.worldHeight()},
+                         2.0f, theme::kGroundLine);
+
+    // The edge the horde comes from, marked once rather than explained in
+    // text: a warm bar down the spawn column.
+    DrawRectangleV(Vector2{0.0f, 0.0f}, Vector2{cs * 0.35f, grid.worldHeight()},
+                   theme::withAlpha(theme::kFireDeep, 0.35f));
+
     // Walls get a warm rimlight on their upper edge and a shadow below, which
     // is what stops a flat top-down field from reading as a spreadsheet.
     for (int cy = 0; cy < grid.rows(); ++cy) {

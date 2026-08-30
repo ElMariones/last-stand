@@ -67,6 +67,8 @@ private:
     float    sampleClock_   = 0.0f;
     float    breachTime_    = 0.0f;
     float    peakKps_       = 0.0f;
+    float    kpsWindow_     = 0.0f;   // seconds accumulated in the window
+    uint32_t kpsWindowKills_ = 0u;
     float    levelSeconds_  = 1.0f;
     float    totalHealth_   = 0.0f;
     uint32_t totalEnemies_  = 0u;

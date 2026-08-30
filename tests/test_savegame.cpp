@@ -25,16 +25,22 @@ SaveData makeData() {
     d.settings.damageNumbers = true;
     d.settings.levelOfDetail = false;
     d.settings.debugOverlay = true;
+    d.settings.uiScale = 125;
+    d.settings.windowWidth = 1600;
+    d.settings.windowHeight = 900;
+    d.settings.fullscreen = true;
     return d;
 }
 
-// A version 1 payload: the v2 bytes with the version word rewritten and the
-// settings block chopped off. This is what a save written before M6 looks
-// like, and it must still load.
-std::vector<uint8_t> makeV1Bytes() {
+// An older payload: the current bytes with the version word rewritten and
+// everything that version predates chopped off. Both of these are what a save
+// written by an earlier build looks like, and both must still load.
+std::vector<uint8_t> makeOldBytes(uint8_t version) {
     auto bytes = ls::serialize(makeData());
-    bytes[4] = 1u;
-    bytes.resize(4u * (2u + 1u + ls::kNodeCount + 2u * ls::kSaveLevels));
+    bytes[4] = version;
+    const size_t core = 2u + 1u + ls::kNodeCount + 2u * ls::kSaveLevels;
+    const size_t words = (version == 1u) ? core : core + 6u;
+    bytes.resize(4u * words);
     return bytes;
 }
 }  // namespace
@@ -61,6 +67,9 @@ TEST_CASE("serialize then deserialize round-trips every field") {
     CHECK(out.settings.damageNumbers);
     CHECK_FALSE(out.settings.levelOfDetail);
     CHECK(out.settings.debugOverlay);
+    CHECK(out.settings.uiScale == in.settings.uiScale);
+    CHECK(out.settings.windowWidth == in.settings.windowWidth);
+    CHECK(out.settings.fullscreen == in.settings.fullscreen);
 }
 
 TEST_CASE("deserialize rejects a bad magic") {
@@ -90,7 +99,7 @@ TEST_CASE("deserialize rejects an unknown version") {
 TEST_CASE("a version 1 save still loads, with settings defaulted") {
     // Refusing to read a player's entire progress because the game grew a
     // volume slider is the worst possible bug (GDD 14.8).
-    const auto bytes = makeV1Bytes();
+    const auto bytes = makeOldBytes(1u);
     const SaveData expected = makeData();
     const ls::Settings defaults;
 
@@ -103,8 +112,34 @@ TEST_CASE("a version 1 save still loads, with settings defaulted") {
     CHECK(out.clearCounts == expected.clearCounts);
     CHECK(out.settings.masterVolume == defaults.masterVolume);
     CHECK(out.settings.hitstop == defaults.hitstop);
-    // Read as v1, written back as v2: the upgrade is one-way and silent.
-    CHECK(out.version == 2u);
+    CHECK(out.settings.uiScale == defaults.uiScale);
+    // Read as v1, written back as the current version: the upgrade is
+    // one-way and silent.
+    CHECK(out.version == 3u);
+}
+
+TEST_CASE("a version 2 save keeps its settings and defaults only the new ones") {
+    const auto bytes = makeOldBytes(2u);
+    const SaveData expected = makeData();
+    const ls::Settings defaults;
+
+    SaveData out;
+    REQUIRE(ls::deserialize(bytes.data(), bytes.size(), out));
+
+    CHECK(out.settings.masterVolume == expected.settings.masterVolume);
+    CHECK(out.settings.shakeScale == expected.settings.shakeScale);
+    CHECK(out.settings.debugOverlay == expected.settings.debugOverlay);
+    // v3 fields fall back rather than reading whatever followed.
+    CHECK(out.settings.uiScale == defaults.uiScale);
+    CHECK(out.settings.windowWidth == defaults.windowWidth);
+    CHECK(out.version == 3u);
+}
+
+TEST_CASE("a save from a NEWER build is refused rather than misread") {
+    auto bytes = ls::serialize(makeData());
+    bytes[4] = 99u;
+    SaveData out;
+    CHECK_FALSE(ls::deserialize(bytes.data(), bytes.size(), out));
 }
 
 TEST_CASE("a v2 file truncated inside the settings block is refused") {

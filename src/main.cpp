@@ -4,6 +4,7 @@
 #include <raylib.h>
 
 #include <algorithm>
+#include <cstring>
 #include <vector>
 
 #include "app/Balance.h"
@@ -21,6 +22,64 @@
 namespace {
 
 const char* kSavePath = "laststand.save";
+
+// Drives the session to whatever screen a capture wants, so a screenshot of
+// the upgrade tree does not depend on someone pressing keys fast enough.
+void setUpShot(ls::Session& session, const char* screen) {
+    const auto is = [&](const char* name) {
+        return std::strcmp(screen, name) == 0;
+    };
+    if (is("title")) return;
+
+    session.goMenu();
+    if (is("menu")) return;
+    if (is("options")) { session.goOptions(); return; }
+    if (is("levels")) { session.goLevelSelect(); return; }
+
+    session.selectLevel(is("report") || is("tree") ? 0 : 0);
+    if (is("prepare")) return;
+
+    session.startBattle();
+    if (is("battle")) {
+        // Far enough in that there is a horde on screen and things are dying.
+        for (int i = 0; i < 1400; ++i) {
+            session.updateBattle(1.0f / 60.0f);
+            session.updatePresentation(1.0f / 60.0f);
+        }
+        return;
+    }
+
+    for (int i = 0; i < 20000 && session.phase() == ls::Phase::Battle; ++i) {
+        session.updateBattle(1.0f / 60.0f);
+    }
+    session.skipReveal();
+    if (is("tree")) session.openTree();
+}
+
+// Pushes the window settings into raylib. Called at startup and whenever the
+// options screen changes one, so the game reopens the way it was left.
+void applyDisplaySettings(const ls::Settings& settings) {
+    ls::ui::setScale(settings.ui());
+
+    const bool isFullscreen = IsWindowFullscreen();
+    if (settings.fullscreen != isFullscreen) {
+        // Match the monitor before going fullscreen, or raylib stretches the
+        // old window size across the display.
+        if (settings.fullscreen) {
+            const int monitor = GetCurrentMonitor();
+            SetWindowSize(GetMonitorWidth(monitor), GetMonitorHeight(monitor));
+        }
+        ToggleFullscreen();
+        if (!settings.fullscreen) {
+            SetWindowSize(settings.windowWidth, settings.windowHeight);
+        }
+        return;
+    }
+    if (!settings.fullscreen && (GetScreenWidth() != settings.windowWidth ||
+                                 GetScreenHeight() != settings.windowHeight)) {
+        SetWindowSize(settings.windowWidth, settings.windowHeight);
+    }
+}
 
 // Times the render path alone: the simulation runs so the horde is real and
 // moving, but only renderer.draw() is on the clock. Opens a window because
@@ -146,6 +205,7 @@ int main(int argc, char** argv) {
     SetExitKey(KEY_NULL);   // ESC is the pause/back key, not the quit key
 
     ls::Session session(kSavePath);
+    applyDisplaySettings(session.settings());
     ls::AudioEngine audio;
     audio.init();
     audio.applySettings(session.settings());
@@ -154,17 +214,16 @@ int main(int argc, char** argv) {
     ls::Renderer renderer;
     ls::DebugFlags flags;
     ls::ui::State ui;
+    ui.windowSizeIndex = ls::nearestWindowSize(session.settings().windowWidth,
+                                               session.settings().windowHeight);
 
     ls::Phase prevPhase = session.phase();
     double lastTickMs = 0.0;
     bool quitRequested = false;
+    uint64_t shotFrames = 0u;
 
     const bool shotMode = options.shotTicks > 0u;
-    if (shotMode) {
-        session.goMenu();
-        session.selectLevel(0);
-        session.startBattle();
-    }
+    if (shotMode) setUpShot(session, options.shotScreen);
 
     while (!WindowShouldClose() && !quitRequested) {
         const float frameSeconds =
@@ -187,11 +246,20 @@ int main(int argc, char** argv) {
                 session.overchargeAt(ls::Vec2{m.x, m.y});
             }
         }
-        if (phase == ls::Phase::Prepare &&
-            IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
-            GetMousePosition().y < static_cast<float>(GetScreenHeight()) - 84.0f) {
+        if (phase == ls::Phase::Prepare) {
             const Vector2 m = GetMousePosition();
-            session.setTurretAt(ls::Vec2{m.x, m.y}, 14.0f, 14.0f);
+            const float hudTop =
+                static_cast<float>(GetScreenHeight()) - ls::ui::px(104.0f);
+            if (m.y < hudTop) {
+                // A generous radius: hardpoints are 20px rings, and hunting
+                // for a 14px hitbox with a mouse is not a game mechanic.
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    session.toggleTurretAt(ls::Vec2{m.x, m.y}, 28.0f);
+                }
+                if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+                    session.removeTurretAt(ls::Vec2{m.x, m.y}, 28.0f);
+                }
+            }
         }
 
         // --- simulation -----------------------------------------------------
@@ -310,12 +378,20 @@ int main(int argc, char** argv) {
 
         switch (action.action) {
             case ls::ui::Action::None: break;
-            case ls::ui::Action::Play:
+            case ls::ui::Action::Continue:
                 if (session.phase() == ls::Phase::Title) session.goMenu();
                 else session.goLevelSelect();
                 break;
+            case ls::ui::Action::NewGame:
+                session.newGame();
+                audio.applySettings(session.settings());
+                break;
             case ls::ui::Action::Options: session.goOptions(); break;
             case ls::ui::Action::Quit: quitRequested = true; break;
+            case ls::ui::Action::ApplyDisplay:
+                applyDisplaySettings(session.settings());
+                audio.applySettings(session.settings());
+                break;
             case ls::ui::Action::Back:
                 audio.play(ls::SoundId::UiBack);
                 if (session.phase() == ls::Phase::Options) session.resume();
@@ -327,10 +403,27 @@ int main(int argc, char** argv) {
                 else session.selectLevel(action.value);
                 break;
             case ls::ui::Action::StartBattle: session.startBattle(); break;
-            case ls::ui::Action::CycleKind: session.cycleKind(); break;
+            case ls::ui::Action::SelectKind:
+                session.selectKind(static_cast<ls::TurretKind>(action.value));
+                break;
             case ls::ui::Action::CycleTargeting: session.cycleTargeting(); break;
+            case ls::ui::Action::FillHardpoints: session.fillEmptyHardpoints(); break;
+            case ls::ui::Action::ClearHardpoints: session.clearLoadout(); break;
             case ls::ui::Action::Retry: session.retry(); break;
-            case ls::ui::Action::OpenTree: session.openTree(); break;
+            case ls::ui::Action::Restart:
+                session.resume();
+                session.retry();
+                break;
+            case ls::ui::Action::OpenTree:
+                session.openTree();
+                // Land the cursor on the node the report just recommended,
+                // so the advice survives the screen change.
+                if (session.failure().suggestionCount > 0) {
+                    ui.tree.index = static_cast<int>(
+                        session.failure().suggestions[0]);
+                    ui.treeScroll = 0;
+                }
+                break;
             case ls::ui::Action::BackToPrepare: session.backToPrepare(); break;
             case ls::ui::Action::Buy:
                 session.buy(static_cast<ls::NodeId>(action.value));
@@ -344,9 +437,12 @@ int main(int argc, char** argv) {
             case ls::ui::Action::ToMenu: session.goMenu(); break;
         }
 
-        if (shotMode && timestep.totalTicks() >= options.shotTicks) {
-            TakeScreenshot("shot.png");
-            break;
+        if (shotMode) {
+            ++shotFrames;
+            if (shotFrames >= options.shotTicks) {
+                TakeScreenshot(options.shotPath);
+                break;
+            }
         }
     }
 

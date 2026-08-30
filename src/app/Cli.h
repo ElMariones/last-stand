@@ -14,6 +14,11 @@ struct Options {
     // Exists so the render path can be verified without a human at the
     // keyboard, and so README captures are reproducible.
     uint64_t shotTicks = 0u;
+    // Which screen --shot should capture: title, menu, options, levels,
+    // prepare, battle, report or tree. Makes UI captures reproducible
+    // instead of a matter of pressing keys fast enough.
+    const char* shotScreen = "battle";
+    const char* shotPath   = "shot.png";
 
     // Benchmark sweep: run the standard entity ladder and append a row per
     // rung to `sweepPath`, tagged `stage` / `notes`. This is what produces

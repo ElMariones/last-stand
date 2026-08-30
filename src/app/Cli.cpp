@@ -53,6 +53,10 @@ Options parseArgs(int argc, const char* const* argv) {
             takeValue(argc, argv, i, o.seed);
         } else if (std::strcmp(a, "--shot") == 0) {
             takeValue(argc, argv, i, o.shotTicks);
+        } else if (std::strcmp(a, "--shot-screen") == 0) {
+            takeText(argc, argv, i, o.shotScreen);
+        } else if (std::strcmp(a, "--shot-out") == 0) {
+            takeText(argc, argv, i, o.shotPath);
         } else if (std::strcmp(a, "--sweep") == 0) {
             if (takeText(argc, argv, i, o.sweepPath)) o.bench = true;
         } else if (std::strcmp(a, "--stage") == 0) {
@@ -98,7 +102,10 @@ const char* usageText() {
         "  --no-lod            draw every enemy at the lowest detail tier\n"
         "  --no-batch          one raylib draw call per enemy (the M4 path)\n"
         "  --render-frames <n> frames to time in --render-bench (default 600)\n"
-        "  --shot <n>          render n ticks, write shot.png, exit\n"
+        "  --shot <n>          render n frames, screenshot, exit\n"
+        "  --shot-screen <s>   which screen to capture (title|menu|options|\n"
+        "                      levels|prepare|battle|report|tree)\n"
+        "  --shot-out <file>   screenshot path (default shot.png)\n"
         "  -h, --help          this text\n";
 }
 

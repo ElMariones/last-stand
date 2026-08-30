@@ -59,15 +59,20 @@ void BattleTelemetry::sample(const World& world, float dt) {
     if (sampleClock_ < kSampleInterval && !tookDamage) return;
     sampleClock_ = 0.0f;
 
-    // Kills per second between samples, peak retained. This is the "3.2
-    // kills/sec" brag on the report.
+    // Kills per second, peaked over a whole second rather than over one
+    // sample. Two kills inside a 0.1s sample is not "20 kills a second", and
+    // printing it as one made the report's proudest number a lie.
     const uint32_t kills = world.totalKills();
-    if (kills > lastKills_ && elapsed_ > 0.0f) {
-        const float delta = static_cast<float>(kills - lastKills_);
-        const float kps = delta / std::max(kSampleInterval, dt);
-        peakKps_ = std::max(peakKps_, kps);
-    }
+    if (kills > lastKills_) kpsWindowKills_ += kills - lastKills_;
     lastKills_ = kills;
+
+    kpsWindow_ += kSampleInterval;
+    if (kpsWindow_ >= 1.0f) {
+        peakKps_ = std::max(peakKps_,
+                            static_cast<float>(kpsWindowKills_) / kpsWindow_);
+        kpsWindow_ = 0.0f;
+        kpsWindowKills_ = 0u;
+    }
 
     // Row occupancy: a fixed stack array, because this runs inside a battle
     // and battles do not allocate.

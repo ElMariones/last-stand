@@ -6,4 +6,4 @@ compile_commands.json
 
 # Runtime artifacts
 laststand.save
-shot.png
+*.png

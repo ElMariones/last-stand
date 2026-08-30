@@ -9,20 +9,22 @@ namespace ls {
 namespace {
 // 'L','S','T','D' as a little-endian uint32.
 constexpr uint32_t kMagic = 0x4454534Cu;
-constexpr uint32_t kVersion = 2u;
+constexpr uint32_t kVersion = 3u;
 
 // Words after magic+version, per version. v1: scrap + nodes + bests + clears.
 // v2 adds five settings words plus the packed flag word.
 constexpr size_t kBodyWordsV1 = 1u + kNodeCount + 2u * kSaveLevels;
-constexpr size_t kSettingsWords = 6u;
-constexpr size_t kBodyWordsV2 = kBodyWordsV1 + kSettingsWords;
+constexpr size_t kSettingsWordsV2 = 6u;
+constexpr size_t kDisplayWordsV3  = 3u;   // width, height, ui scale
+constexpr size_t kBodyWordsV2 = kBodyWordsV1 + kSettingsWordsV2;
+constexpr size_t kBodyWordsV3 = kBodyWordsV2 + kDisplayWordsV3;
 
 size_t bytesFor(size_t bodyWords) { return 4u * (2u + bodyWords); }
 }  // namespace
 
 std::vector<uint8_t> serialize(const SaveData& data) {
     std::vector<uint8_t> out;
-    out.reserve(bytesFor(kBodyWordsV2));
+    out.reserve(bytesFor(kBodyWordsV3));
 
     const auto put = [&](uint32_t v) {
         out.push_back(static_cast<uint8_t>(v & 0xFFu));
@@ -45,6 +47,9 @@ std::vector<uint8_t> serialize(const SaveData& data) {
     put(static_cast<uint32_t>(s.shakeScale));
     put(static_cast<uint32_t>(s.defaultTimeScale));
     put(packSettingFlags(s));
+    put(static_cast<uint32_t>(s.windowWidth));
+    put(static_cast<uint32_t>(s.windowHeight));
+    put(static_cast<uint32_t>(s.uiScale));
     return out;
 }
 
@@ -64,11 +69,12 @@ bool deserialize(const uint8_t* bytes, size_t size, SaveData& out) {
     if (get() != kMagic) return false;
 
     const uint32_t version = get();
-    if (version != 1u && version != kVersion) {
+    if (version == 0u || version > kVersion) {
         out.version = version;   // leave a hint but fail
         return false;
     }
-    if (version == kVersion && size < bytesFor(kBodyWordsV2)) return false;
+    if (version >= 2u && size < bytesFor(kBodyWordsV2)) return false;
+    if (version >= 3u && size < bytesFor(kBodyWordsV3)) return false;
 
     SaveData d;
     d.version = kVersion;        // upgraded on read; the next write is v2
@@ -77,7 +83,7 @@ bool deserialize(const uint8_t* bytes, size_t size, SaveData& out) {
     for (auto& v : d.bestKills) v = get();
     for (auto& v : d.clearCounts) v = get();
 
-    if (version == kVersion) {
+    if (version >= 2u) {
         d.settings.masterVolume = static_cast<int>(get());
         d.settings.sfxVolume = static_cast<int>(get());
         d.settings.musicVolume = static_cast<int>(get());
@@ -85,7 +91,13 @@ bool deserialize(const uint8_t* bytes, size_t size, SaveData& out) {
         d.settings.defaultTimeScale = static_cast<int>(get());
         unpackSettingFlags(get(), d.settings);
     }
-    // v1 leaves d.settings at its defaults, which is the whole point.
+    if (version >= 3u) {
+        d.settings.windowWidth = static_cast<int>(get());
+        d.settings.windowHeight = static_cast<int>(get());
+        d.settings.uiScale = static_cast<int>(get());
+    }
+    // An older file leaves the fields it predates at their defaults, which is
+    // the whole point of reading it at all.
     clampSettings(d.settings);
 
     out = d;
@@ -120,7 +132,7 @@ bool load(SaveData& out, const char* path) {
     if (f == nullptr) return false;
 
     std::vector<uint8_t> bytes;
-    bytes.reserve(bytesFor(kBodyWordsV2) + 1u);
+    bytes.reserve(bytesFor(kBodyWordsV3) + 1u);
     uint8_t buf[4096];
     size_t n = 0u;
     while ((n = std::fread(buf, 1u, sizeof(buf), f)) > 0u) {

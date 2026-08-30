@@ -12,15 +12,19 @@ namespace ls::ui {
 // drawing code.
 enum class Action {
     None,
-    Play,
+    Continue,
+    NewGame,
     Options,
     Quit,
     Back,
-    SelectLevel,     // value = level index
+    SelectLevel,     // value = level index, or -1 to open the level select
     StartBattle,
-    CycleKind,
+    SelectKind,      // value = TurretKind
     CycleTargeting,
+    FillHardpoints,
+    ClearHardpoints,
     Retry,
+    Restart,
     OpenTree,
     BackToPrepare,
     Buy,             // value = node index
@@ -28,6 +32,7 @@ enum class Action {
     Resume,
     Abandon,
     ToMenu,
+    ApplyDisplay,    // window size / fullscreen / ui scale changed
 };
 
 struct Result {
@@ -48,6 +53,11 @@ struct State {
     int   treeScroll = 0;
     float fade = 0.0f;         // 1 = fully covered, for screen transitions
     float titleClock = 0.0f;
+    // NEW GAME erases everything, so it asks twice rather than opening a
+    // modal dialog — GDD 13.1 forbids those outright.
+    bool  newGameArmed = false;
+    int   windowSizeIndex = 0;
+    int   hoveredHardpoint = -1;
     WidgetFeedback feedback;
 };
 
@@ -58,6 +68,8 @@ Result drawMenu(State& state, const Session& session);
 Result drawOptions(State& state, Session& session);
 Result drawLevelSelect(State& state, const Session& session);
 Result drawPrepareHud(State& state, const Session& session);
+// The hardpoint markers, drawn over the battlefield in Prepare.
+void   drawHardpointOverlay(State& state, const Session& session);
 Result drawBattleHud(State& state, const Session& session);
 Result drawPause(State& state, const Session& session);
 Result drawReport(State& state, const Session& session);

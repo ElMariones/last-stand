@@ -9,6 +9,15 @@ namespace ls::ui {
 // add a dependency and a programmer-art tell. Dear ImGui stays for developer
 // tooling, when rlImGui finally tags a release.
 
+// A global UI scale, so the whole interface can be sized for the display
+// rather than the player leaning in. Applied to type and to the row metrics
+// screens lay out with; positions come from the window size, so layouts
+// reflow on their own.
+void  setScale(float scale);
+float scale();
+int   sz(int baseSize);      // scaled font size
+float px(float baseLength);  // scaled length
+
 // Keyboard-first focus. Every screen is a vertical list of items; the mouse
 // is a shortcut, never the only way in. Hovering with the mouse MOVES focus,
 // so the two input methods never disagree about what is selected.
@@ -56,6 +65,13 @@ bool button(Rectangle bounds, const char* label, Focus& focus, int item,
 bool slider(Rectangle bounds, const char* label, int& value, int lo, int hi,
             int step, Focus& focus, int item);
 
+// A slider whose numeric value means nothing to the player (an index into a
+// list, say), so the caller draws its own readout. `disabled` dims it and
+// refuses input, for a control that does not apply right now.
+bool sliderQuiet(Rectangle bounds, const char* label, int& value, int lo,
+                 int hi, int step, Focus& focus, int item,
+                 bool disabled = false);
+
 // A row that toggles on ENTER/SPACE/LEFT/RIGHT or a click.
 bool toggle(Rectangle bounds, const char* label, bool& value, Focus& focus,
             int item);
@@ -70,5 +86,9 @@ bool treeRow(Rectangle bounds, const char* name, const char* levelText,
 // True if the mouse is inside — screens use it for hover states the focus
 // model does not cover.
 bool hovered(Rectangle bounds);
+
+// The X in a panel's top-right corner. Every dismissable panel gets one:
+// keyboard users press escape, and everyone else looks for the X.
+bool closeButton(Rectangle panelBounds);
 
 }  // namespace ls::ui

@@ -10,6 +10,7 @@ namespace ls::ui {
 namespace {
 
 WidgetFeedback* g_feedback = nullptr;
+float g_scale = 1.0f;
 
 void noteMove() {
     if (g_feedback != nullptr) g_feedback->moved = true;
@@ -24,6 +25,13 @@ bool pressedAccept() {
 }
 
 }  // namespace
+
+void setScale(float s) { g_scale = std::clamp(s, 0.5f, 3.0f); }
+float scale() { return g_scale; }
+int sz(int baseSize) {
+    return std::max(8, static_cast<int>(static_cast<float>(baseSize) * g_scale));
+}
+float px(float baseLength) { return baseLength * g_scale; }
 
 void Focus::begin(int itemCount) {
     count = itemCount;
@@ -63,8 +71,8 @@ void panel(Rectangle bounds, float alpha) {
 
 void panelTitled(Rectangle bounds, const char* title, float alpha) {
     panel(bounds, alpha);
-    text(title, bounds.x + theme::kGutter, bounds.y + theme::kUnit * 1.5f,
-         theme::kSmall, theme::withAlpha(theme::kColdDim, alpha));
+    text(title, bounds.x + px(theme::kGutter), bounds.y + px(theme::kUnit * 1.5f),
+         sz(theme::kSmall), theme::withAlpha(theme::kColdDim, alpha));
     rule(bounds.x + theme::kGutter, bounds.y + theme::kUnit * 4.5f,
          bounds.width - theme::kGutter * 2.0f, alpha * 0.6f);
 }
@@ -140,36 +148,45 @@ bool button(Rectangle bounds, const char* label, Focus& focus, int item,
                                : (isFocused ? theme::kInk : theme::kInkDim);
     textCentered(label, bounds.x + bounds.width * 0.5f,
                  bounds.y + bounds.height * 0.5f -
-                     static_cast<float>(theme::kBody) * 0.5f,
-                 theme::kBody, ink);
+                     static_cast<float>(sz(theme::kBody)) * 0.5f,
+                 sz(theme::kBody), ink);
     return rowActivated(bounds, isFocused, enabled);
 }
 
-bool slider(Rectangle bounds, const char* label, int& value, int lo, int hi,
-            int step, Focus& focus, int item) {
-    const bool isFocused = rowChrome(bounds, focus, item, true);
-    const Color ink = isFocused ? theme::kInk : theme::kInkDim;
+namespace {
 
-    const float padX = theme::kGutter;
+bool sliderImpl(Rectangle bounds, const char* label, int& value, int lo, int hi,
+                int step, Focus& focus, int item, bool showValue,
+                bool disabled) {
+    const bool isFocused = rowChrome(bounds, focus, item, !disabled);
+    const Color ink = disabled ? theme::kInkFaint
+                               : (isFocused ? theme::kInk : theme::kInkDim);
+
+    const float padX = px(theme::kGutter);
     const float textY =
-        bounds.y + bounds.height * 0.5f - static_cast<float>(theme::kBody) * 0.5f;
-    text(label, bounds.x + padX, textY, theme::kBody, ink);
+        bounds.y + bounds.height * 0.5f - static_cast<float>(sz(theme::kBody)) * 0.5f;
+    text(label, bounds.x + padX, textY, sz(theme::kBody), ink);
 
-    const float trackW = 220.0f;
-    const float trackX = bounds.x + bounds.width - padX - trackW - 70.0f;
+    const float trackW = px(200.0f);
+    const float trackX = bounds.x + bounds.width - padX - trackW - px(64.0f);
     const Rectangle track{trackX, bounds.y + bounds.height * 0.5f - 3.0f,
                           trackW, 6.0f};
     const float frac = (hi > lo) ? static_cast<float>(value - lo) /
                                        static_cast<float>(hi - lo)
                                  : 0.0f;
-    bar(track, frac, isFocused ? theme::kCold : theme::kColdDim,
+    bar(track, frac,
+        disabled ? theme::kColdDeep
+                 : (isFocused ? theme::kCold : theme::kColdDim),
         theme::kColdDeep);
 
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%d", value);
-    textRight(buf, bounds.x + bounds.width - padX, textY, theme::kBody, ink);
+    if (showValue) {
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%d", value);
+        textRight(buf, bounds.x + bounds.width - padX, textY, sz(theme::kBody),
+                  ink);
+    }
 
-    if (!isFocused) return false;
+    if (!isFocused || disabled) return false;
 
     int delta = 0;
     if (IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) delta = -step;
@@ -193,17 +210,31 @@ bool slider(Rectangle bounds, const char* label, int& value, int lo, int hi,
     return value != before;
 }
 
+}  // namespace
+
+bool slider(Rectangle bounds, const char* label, int& value, int lo, int hi,
+            int step, Focus& focus, int item) {
+    return sliderImpl(bounds, label, value, lo, hi, step, focus, item, true,
+                      false);
+}
+
+bool sliderQuiet(Rectangle bounds, const char* label, int& value, int lo,
+                 int hi, int step, Focus& focus, int item, bool disabled) {
+    return sliderImpl(bounds, label, value, lo, hi, step, focus, item, false,
+                      disabled);
+}
+
 bool toggle(Rectangle bounds, const char* label, bool& value, Focus& focus,
             int item) {
     const bool isFocused = rowChrome(bounds, focus, item, true);
     const Color ink = isFocused ? theme::kInk : theme::kInkDim;
-    const float padX = theme::kGutter;
+    const float padX = px(theme::kGutter);
     const float textY =
-        bounds.y + bounds.height * 0.5f - static_cast<float>(theme::kBody) * 0.5f;
+        bounds.y + bounds.height * 0.5f - static_cast<float>(sz(theme::kBody)) * 0.5f;
 
-    text(label, bounds.x + padX, textY, theme::kBody, ink);
+    text(label, bounds.x + padX, textY, sz(theme::kBody), ink);
     textRight(value ? "ON" : "OFF", bounds.x + bounds.width - padX, textY,
-              theme::kBody, value ? theme::kCold : theme::kInkFaint);
+              sz(theme::kBody), value ? theme::kCold : theme::kInkFaint);
 
     bool changed = false;
     if (isFocused && (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_RIGHT))) {
@@ -212,6 +243,26 @@ bool toggle(Rectangle bounds, const char* label, bool& value, Focus& focus,
     if (rowActivated(bounds, isFocused, true)) changed = true;
     if (changed) value = !value;
     return changed;
+}
+
+bool closeButton(Rectangle panelBounds) {
+    const float size = px(28.0f);
+    const Rectangle r{panelBounds.x + panelBounds.width - size - px(8.0f),
+                      panelBounds.y + px(8.0f), size, size};
+    const bool over = hovered(r);
+    DrawRectangleLinesEx(r, 1.0f,
+                         over ? theme::kInk : theme::withAlpha(theme::kColdDeep, 1.0f));
+    const float inset = size * 0.3f;
+    const Color ink = over ? theme::kInk : theme::kInkDim;
+    DrawLineEx(Vector2{r.x + inset, r.y + inset},
+               Vector2{r.x + r.width - inset, r.y + r.height - inset}, 1.6f, ink);
+    DrawLineEx(Vector2{r.x + r.width - inset, r.y + inset},
+               Vector2{r.x + inset, r.y + r.height - inset}, 1.6f, ink);
+    if (over && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        noteAccept();
+        return true;
+    }
+    return false;
 }
 
 bool treeRow(Rectangle bounds, const char* name, const char* levelText,
@@ -226,23 +277,23 @@ bool treeRow(Rectangle bounds, const char* name, const char* levelText,
     const Color costInk =
         owned ? theme::kInkFaint : (affordable ? theme::kScrap : theme::kInkFaint);
 
-    const float padX = theme::kUnit * 2.0f;
+    const float padX = px(theme::kUnit * 2.0f);
     const float textY =
-        bounds.y + bounds.height * 0.5f - static_cast<float>(theme::kSmall) * 0.5f;
+        bounds.y + bounds.height * 0.5f - static_cast<float>(sz(theme::kSmall)) * 0.5f;
 
-    text(name, bounds.x + padX, textY, theme::kSmall, nameInk);
-    text(levelText, bounds.x + padX + 190.0f, textY, theme::kMicro,
+    text(name, bounds.x + padX, textY, sz(theme::kSmall), nameInk);
+    text(levelText, bounds.x + padX + px(180.0f), textY, sz(theme::kMicro),
          theme::kInkDim);
-    text(description, bounds.x + padX + 260.0f, textY, theme::kMicro,
+    text(description, bounds.x + padX + px(250.0f), textY, sz(theme::kMicro),
          affordable ? theme::kInkDim : theme::kInkFaint);
 
     if (owned) {
         textRight("OWNED", bounds.x + bounds.width - padX, textY,
-                  theme::kMicro, theme::kGood);
+                  sz(theme::kMicro), theme::kGood);
     } else {
         char buf[32];
         std::snprintf(buf, sizeof(buf), "%u", cost);
-        textRight(buf, bounds.x + bounds.width - padX, textY, theme::kSmall,
+        textRight(buf, bounds.x + bounds.width - padX, textY, sz(theme::kSmall),
                   costInk);
     }
 

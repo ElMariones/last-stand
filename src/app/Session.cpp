@@ -223,29 +223,95 @@ void Session::cycleTargeting() {
     syncWorldTurrets();
 }
 
-void Session::setTurretAt(Vec2 worldPos, float halfW, float halfH) {
-    if (phase_ != Phase::Prepare) return;
+int Session::hardpointCount() const {
+    return static_cast<int>(level_.map.hardpoints.size()) +
+           (effects_.extraHardpoint ? 1 : 0);
+}
 
-    const size_t baseCount = level_.map.hardpoints.size();
-    const size_t limit = baseCount + (effects_.extraHardpoint ? 1u : 0u);
+Vec2 Session::hardpointAt(int index) const {
+    const int base = static_cast<int>(level_.map.hardpoints.size());
+    if (index < 0 || index >= hardpointCount()) return Vec2{0.0f, 0.0f};
+    // The bonus hardpoint from the tree sits on the base itself: a last line
+    // of defence rather than a fifth position on the approach.
+    if (index >= base) return level_.map.baseCenter();
+    return level_.map.hardpoints[static_cast<size_t>(index)];
+}
 
-    for (size_t i = 0; i < limit; ++i) {
-        const Vec2 hp = (i < baseCount) ? level_.map.hardpoints[i]
-                                        : level_.map.baseCenter();
-        if (!contains(fromCenter(hp, halfW, halfH), worldPos)) continue;
-
-        // Replace any loadout turret already at this hardpoint, else append.
-        for (Turret& t : loadout_) {
-            if (distanceSq(t.position, hp) < 1.0f) {
-                t = makeTurret(selectedKind_, hp, effects_);
-                syncWorldTurrets();
-                return;
-            }
+int Session::turretAtHardpoint(int index) const {
+    const Vec2 hp = hardpointAt(index);
+    for (size_t i = 0; i < loadout_.size(); ++i) {
+        if (distanceSq(loadout_[i].position, hp) < 1.0f) {
+            return static_cast<int>(i);
         }
-        loadout_.push_back(makeTurret(selectedKind_, hp, effects_));
-        syncWorldTurrets();
-        return;
     }
+    return -1;
+}
+
+int Session::hardpointNear(Vec2 worldPos, float radius) const {
+    int best = -1;
+    float bestD = radius * radius;
+    for (int i = 0; i < hardpointCount(); ++i) {
+        const float d = distanceSq(hardpointAt(i), worldPos);
+        if (d <= bestD) {
+            bestD = d;
+            best = i;
+        }
+    }
+    return best;
+}
+
+void Session::toggleTurretAt(Vec2 worldPos, float radius) {
+    if (phase_ != Phase::Prepare) return;
+    const int hp = hardpointNear(worldPos, radius);
+    if (hp < 0) return;
+
+    const int existing = turretAtHardpoint(hp);
+    if (existing >= 0) {
+        Turret& t = loadout_[static_cast<size_t>(existing)];
+        if (t.kind == selectedKind_) {
+            // Same kind on an occupied slot: the click means "take it away".
+            loadout_.erase(loadout_.begin() + existing);
+        } else {
+            t = makeTurret(selectedKind_, hardpointAt(hp), effects_);
+        }
+    } else {
+        loadout_.push_back(makeTurret(selectedKind_, hardpointAt(hp), effects_));
+    }
+    syncWorldTurrets();
+}
+
+void Session::removeTurretAt(Vec2 worldPos, float radius) {
+    if (phase_ != Phase::Prepare) return;
+    const int hp = hardpointNear(worldPos, radius);
+    if (hp < 0) return;
+    const int existing = turretAtHardpoint(hp);
+    if (existing < 0) return;
+    loadout_.erase(loadout_.begin() + existing);
+    syncWorldTurrets();
+}
+
+void Session::fillEmptyHardpoints() {
+    if (phase_ != Phase::Prepare) return;
+    for (int i = 0; i < hardpointCount(); ++i) {
+        if (turretAtHardpoint(i) >= 0) continue;
+        loadout_.push_back(makeTurret(selectedKind_, hardpointAt(i), effects_));
+    }
+    syncWorldTurrets();
+}
+
+void Session::clearLoadout() {
+    if (phase_ != Phase::Prepare) return;
+    loadout_.clear();
+    syncWorldTurrets();
+}
+
+void Session::selectKind(TurretKind kind) {
+    if (!kindUnlocked(kind)) return;
+    selectedKind_ = kind;
+}
+
+TargetingMode Session::targetingMode() const {
+    return loadout_.empty() ? TargetingMode::First : loadout_.front().mode;
 }
 
 void Session::startBattle() {
@@ -524,6 +590,41 @@ void Session::respec() {
     if (phase_ != Phase::Tree) return;
     tree_.respecAll(scrap_);
     rebuildEffects();
+    saveNow();
+}
+
+uint32_t Session::bestKillsFor(int level) const {
+    if (level < 0 || static_cast<size_t>(level) >= kSaveLevels) return 0u;
+    return bestKills_[static_cast<size_t>(level)];
+}
+
+uint32_t Session::clearCountFor(int level) const {
+    if (level < 0 || static_cast<size_t>(level) >= kSaveLevels) return 0u;
+    return clearCounts_[static_cast<size_t>(level)];
+}
+
+bool Session::hasProgress() const {
+    if (scrap_ > 0u || tree_.totalSpent() > 0u) return true;
+    for (const uint32_t best : bestKills_) {
+        if (best > 0u) return true;
+    }
+    return false;
+}
+
+void Session::newGame() {
+    scrap_ = 0u;
+    uint32_t refund = 0u;
+    tree_.respecAll(refund);      // zeroes every node; the refund is discarded
+    bestKills_.fill(0u);
+    clearCounts_.fill(0u);
+    levelIndex_ = 0;
+    level_ = makeLevel1();
+    selectedKind_ = TurretKind::MachineGun;
+    hasResult_ = false;
+    rebuildEffects();
+    defaultLoadout();
+    resetWorld();
+    phase_ = Phase::Prepare;
     saveNow();
 }
 
