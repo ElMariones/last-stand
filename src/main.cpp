@@ -111,6 +111,10 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    if (options.sweepPath != nullptr) {
+        return ls::runSweep(options) ? 0 : 1;
+    }
+
     if (options.bench || options.noRender) {
         const ls::BenchResult r = ls::runBench(options);
         ls::printBench(r);

@@ -13,6 +13,11 @@ namespace ls {
 
 namespace {
 
+// The entity ladder every milestone is measured on. Fixed so the CSVs from
+// different milestones plot against each other.
+constexpr uint32_t kSweepCounts[] = {100u, 500u, 1000u, 2000u, 5000u};
+constexpr uint64_t kSweepTicks = 1200u;
+
 // A synthetic level that emits everything at t=0: the benchmark wants to
 // measure steady-state per-tick cost at a given entity count, not the shape of
 // a real spawn curve. Victory sits far beyond the tick budget, so the run
@@ -26,13 +31,28 @@ Level makeBenchLevel(uint32_t count) {
     return level;
 }
 
+bool fileExists(const char* path) {
+    std::FILE* f = std::fopen(path, "r");
+    if (f == nullptr) return false;
+    std::fclose(f);
+    return true;
+}
+
 }  // namespace
 
 BenchResult runBench(const Options& options) {
     const Level level = makeBenchLevel(options.spawn);
     World world{level.map, options.seed};
+    world.setNaiveSeparation(options.naiveSeparation);
     for (const Vec2& hp : level.map.hardpoints) world.placeTurret(hp);
     world.setLevelTotal(level.totalEnemies);
+
+    // An indestructible base. World::tick short-circuits once a battle is
+    // over, so a base that falls mid-run turns the remaining samples into
+    // near-zero no-ops and quietly deflates the mean. A benchmark measures
+    // per-tick simulation cost, not who wins.
+    world.base().maxHealth = 1.0e9f;
+    world.base().health = world.base().maxHealth;
     SpawnDirector director;
 
     BenchResult r;
@@ -80,14 +100,31 @@ void printBench(const BenchResult& r) {
     std::printf("state_hash     %llu\n", static_cast<unsigned long long>(r.stateHash));
 }
 
-bool writeBenchCsv(const BenchResult& r, const char* path) {
-    std::FILE* f = std::fopen(path, "w");
+bool runSweep(const Options& options) {
+    if (options.sweepPath == nullptr) return false;
+
+    const bool needHeader = !fileExists(options.sweepPath);
+    std::FILE* f = std::fopen(options.sweepPath, "a");
     if (f == nullptr) return false;
-    std::fprintf(f, "stage,peak_entities,ticks,arrived,tick_min_ms,tick_mean_ms,tick_p99_ms\n");
-    std::fprintf(f, "stage0,%u,%llu,%u,%.6f,%.6f,%.6f\n",
-                 r.peakEntities,
-                 static_cast<unsigned long long>(r.ticks),
-                 r.arrived, r.minMs, r.meanMs, r.p99Ms);
+    if (needHeader) {
+        std::fprintf(f, "stage,peak_entities,ticks,tick_mean_ms,tick_p99_ms,notes\n");
+    }
+
+    for (const uint32_t count : kSweepCounts) {
+        Options run = options;
+        run.spawn = count;
+        run.ticks = kSweepTicks;
+        const BenchResult r = runBench(run);
+
+        std::fprintf(f, "%s,%u,%llu,%.6f,%.6f,%s\n", options.stage,
+                     r.peakEntities,
+                     static_cast<unsigned long long>(r.ticks), r.meanMs,
+                     r.p99Ms, options.notes);
+        std::printf("%-8s %6u entities   mean %8.4f ms   p99 %8.4f ms\n",
+                    options.stage, r.peakEntities, r.meanMs, r.p99Ms);
+        std::fflush(f);
+    }
+
     std::fclose(f);
     return true;
 }

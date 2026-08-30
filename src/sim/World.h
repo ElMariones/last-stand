@@ -27,6 +27,8 @@ public:
     void placeTurret(Vec2 position);   // appends a default Machine Gun
     void addTracer(Vec2 from, Vec2 to, float ttl);
     void setLevelTotal(uint32_t total) { levelTotal_ = total; }
+    // Stage 0 baseline switch; see MovementParams::naiveSeparation.
+    void setNaiveSeparation(bool naive) { movement_.naiveSeparation = naive; }
     void tick(float dt);
 
     // A battle is over when the base falls (defeat) or the invasion is fully
@@ -58,6 +60,11 @@ public:
     std::vector<Turret>& turrets() { return turrets_; }
     const std::array<Tracer, kMaxTracers>& tracers() const { return tracers_; }
     uint32_t tracerCount() const { return tracerCount_; }
+
+    // The renderer reads cell occupancy from here to pick an LOD tier per
+    // enemy (GDD 12.2: the trigger is LOCAL density, not global count).
+    // Reading it is safe — render never mutates the simulation.
+    const SpatialHash& hash() const { return hash_; }
 
 private:
     LevelMap       map_;

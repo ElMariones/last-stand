@@ -8,7 +8,17 @@ namespace {
 
 constexpr uint64_t kFnvOffset = 1469598103934665603ULL;
 constexpr uint64_t kFnvPrime  = 1099511628211ULL;
-constexpr float    kHashCell   = 64.0f;   // tuned to the ~160-unit turret range
+// GDD 14.5 says "tuned to roughly the largest query radius", which was right
+// while the only client was turret acquisition. From M5 the hash also serves
+// separation, whose radius is 12 — and separation is the query that runs
+// n times per tick rather than a few dozen. A 64-unit cell made every
+// separation query sift a 192x192 neighbourhood to find neighbours within 12.
+// The cell is now sized for the hot query — one cell per separation radius,
+// so a separation query touches exactly the 3x3 block that can hold a
+// neighbour. Turret acquisition just walks more (cheap) cells. Measured at
+// 5,000 entities: 64 -> 1.90 ms, 32 -> 1.55, 16 -> 1.25, 12 -> 1.17, 8 -> 1.13.
+// Below 12 the curve flattens while the cell array quadruples, so 12 it is.
+constexpr float    kHashCell   = 12.0f;
 
 inline void hashFloat(uint64_t& h, float v) {
     uint32_t bits = 0u;
@@ -65,8 +75,13 @@ void World::tick(float dt) {
         if (base_.health > base_.maxHealth) base_.health = base_.maxHealth;
     }
 
-    updateMovement(enemies_, field_, dt, movement_);
-
+    // Built twice per tick, deliberately. Separation needs bins over the
+    // positions it is about to read; combat needs bins over the positions
+    // movement just wrote. A counting-sort build is O(n + cells) and costs
+    // far less than either consumer querying stale cells would cost in
+    // correctness.
+    hash_.build(enemies_.position, enemies_.count());
+    updateMovement(enemies_, field_, hash_, dt, movement_);
     hash_.build(enemies_.position, enemies_.count());
 
     // Age tracers before combat so brand-new ones aren't aged this tick.

@@ -1,0 +1,11 @@
+stage,peak_entities,ticks,tick_mean_ms,tick_p99_ms,notes
+stage0,100,1200,0.019704,0.028750,naive O(n^2) separation - M5 baseline
+stage0,500,1200,0.165459,0.242208,naive O(n^2) separation - M5 baseline
+stage0,1000,1200,0.597049,0.628584,naive O(n^2) separation - M5 baseline
+stage0,2000,1200,2.378005,2.529291,naive O(n^2) separation - M5 baseline
+stage0,5000,1200,14.717253,15.134375,naive O(n^2) separation - M5 baseline
+stage1,100,1200,0.012544,0.015833,spatial-hash separation, 12-unit cells
+stage1,500,1200,0.076343,0.096834,spatial-hash separation, 12-unit cells
+stage1,1000,1200,0.182886,0.220125,spatial-hash separation, 12-unit cells
+stage1,2000,1200,0.420074,0.489666,spatial-hash separation, 12-unit cells
+stage1,5000,1200,1.244866,1.752750,spatial-hash separation, 12-unit cells

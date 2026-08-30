@@ -17,6 +17,11 @@ struct BenchResult {
 
 BenchResult runBench(const Options& options);
 void        printBench(const BenchResult& r);
-bool        writeBenchCsv(const BenchResult& r, const char* path);
+
+// Runs the standard entity ladder (100 .. 5000) and appends one row per rung
+// to `path`, writing the header first if the file does not exist yet. The
+// committed docs/bench/*.csv files are exactly this output, which is what
+// makes the optimisation curve an artifact instead of a claim (GDD 14.7).
+bool runSweep(const Options& options);
 
 }  // namespace ls
