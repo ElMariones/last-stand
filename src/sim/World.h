@@ -16,6 +16,17 @@
 
 namespace ls {
 
+// A death, logged for presentation only. Nothing in the simulation reads this
+// back: it is a write-only record of who died this tick, so the fx layer can
+// put a corpse and a burst of sparks where the enemy actually was. The
+// alternative was for the renderer to diff a swap-removed pool between ticks,
+// which is not possible, and the golden hashes prove behaviour is unchanged.
+struct Death {
+    Vec2    position{0.0f, 0.0f};
+    Vec2    direction{1.0f, 0.0f};
+    uint8_t type = 0u;
+};
+
 // Owns the whole simulation. Contains no rendering, no input, no wall-clock
 // time — which is what lets it run headless in the benchmark and produce
 // bit-identical results from the same seed.
@@ -61,6 +72,12 @@ public:
     const std::array<Tracer, kMaxTracers>& tracers() const { return tracers_; }
     uint32_t tracerCount() const { return tracerCount_; }
 
+    // Who died during the last tick. Cleared at the start of every tick and
+    // capped, because past a few thousand simultaneous deaths nobody can see
+    // an individual corpse anyway.
+    static constexpr size_t kMaxLoggedDeaths = 4096u;
+    const std::vector<Death>& deaths() const { return deaths_; }
+
     // The renderer reads cell occupancy from here to pick an LOD tier per
     // enemy (GDD 12.2: the trigger is LOCAL density, not global count).
     // Reading it is safe — render never mutates the simulation.
@@ -80,6 +97,7 @@ private:
     // per-enemy force accumulator.
     std::vector<uint8_t>            burnScratch_;
     std::vector<Vec2>               pushScratch_;
+    std::vector<Death>              deaths_;
     std::array<Tracer, kMaxTracers> tracers_{};
     uint32_t        tracerCount_  = 0u;
     uint64_t        ticks_        = 0u;

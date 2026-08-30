@@ -2,6 +2,9 @@
 #include <cstdint>
 #include <vector>
 
+#include "fx/Corpses.h"
+#include "fx/DamageNumbers.h"
+#include "fx/Particles.h"
 #include "render/Lod.h"
 #include "sim/World.h"
 
@@ -21,6 +24,17 @@ struct RenderSettings {
     bool batched = true;
 };
 
+// Everything the renderer draws that is not the simulation. Passed as a view
+// of pools it does not own, so fx/ stays free of raylib and render/ stays
+// free of app state.
+struct FxScene {
+    const ParticlePool*  particles = nullptr;
+    const CorpseRing*    corpses   = nullptr;
+    const DamageNumbers* numbers   = nullptr;
+    Vec2                 shake{0.0f, 0.0f};
+    bool                 showNumbers = true;
+};
+
 // What one draw() spent its time on. The render benchmark reports these; the
 // point of LOD is that `triangles` stops tracking `enemies`.
 struct RenderStats {
@@ -38,9 +52,14 @@ public:
     void draw(const World& world,
               float alpha,
               const DebugFlags& flags,
-              double frameMs,
-              double tickMs,
-              const RenderSettings& settings = RenderSettings{});
+              const RenderSettings& settings = RenderSettings{},
+              const FxScene& fx = FxScene{});
+
+    // The developer overlay, drawn outside the shaken world so the numbers
+    // stay readable while the screen is coming apart.
+    void drawDebugOverlay(const World& world, double frameMs, double tickMs);
+
+    void tickAnimationClock(float seconds) { animClock_ += seconds; }
 
     const RenderStats& stats() const { return stats_; }
 
@@ -49,6 +68,12 @@ private:
                        const RenderSettings& settings);
     void drawHorde(const World& world, float alpha,
                    const RenderSettings& settings);
+    void drawTerrain(const World& world, const DebugFlags& flags);
+    void drawCorpses(const FxScene& fx);
+    void drawParticles(const FxScene& fx);
+    void drawNumbers(const FxScene& fx);
+    void drawTurrets(const World& world, const DebugFlags& flags);
+    void drawVignette();
 
     // Per-tier index lists, reused across frames so drawing never allocates
     // once the pool has been seen at its peak size.

@@ -129,23 +129,34 @@ TEST_CASE("a burning, exploding battle still allocates nothing") {
     CHECK(allocations == 0);
 }
 
-TEST_CASE("Session drives a battle without allocating, abilities included") {
+TEST_CASE("Session drives a battle without allocating, fx and abilities included") {
     ls::Session session{nullptr};
+    session.goMenu();
+    session.selectLevel(2);          // Level 3: tanks, runners, the lot
     session.startBattle();
+    REQUIRE(session.phase() == ls::Phase::Battle);
 
     const float dt = 1.0f / 60.0f;
+    int ticked = 0;
     long allocations = 0;
     {
         AllocGuard guard;
-        for (int i = 0; i < 1200 && session.phase() == ls::Phase::Battle; ++i) {
-            // Airstrike is locked without its node, so drive the histogram
-            // path directly; it is a no-op that still walks the guard clause.
+        for (int i = 0; i < 2000 && session.phase() == ls::Phase::Battle; ++i) {
+            // Airstrike is locked without its node, so this walks the guard
+            // clause rather than the effect; both paths must stay clean.
             session.fireAirstrike();
             session.overchargeAt(ls::Vec2{600.0f, 360.0f});
             session.updateBattle(dt);
+            // The presentation pools — particles, corpses, damage numbers —
+            // are fixed-capacity for exactly this reason.
+            session.updatePresentation(dt);
+            (void)session.takeEvents();
+            ++ticked;
         }
         allocations = guard.count();
     }
 
+    CHECK(ticked > 500);             // the battle really ran
+    CHECK(session.particles().count() + session.corpses().count() > 0u);
     CHECK(allocations == 0);
 }

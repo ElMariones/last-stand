@@ -45,6 +45,7 @@ World::World(LevelMap levelMap, uint64_t seed)
             EnemyPool::kCapacity),
       burnScratch_(static_cast<size_t>(EnemyPool::kCapacity), 0u),
       pushScratch_(static_cast<size_t>(EnemyPool::kCapacity), Vec2{0.0f, 0.0f}) {
+    deaths_.reserve(kMaxLoggedDeaths);
     field_.build(map_);
     base_.position = map_.baseCenter();
     base_.radius = map_.grid.cellSize() * 1.5f;
@@ -106,6 +107,19 @@ void World::tick(float dt) {
     bool anyIgnite = false;
     for (const Turret& t : turrets_) anyIgnite = anyIgnite || t.ignite;
     applyBurn(enemies_, hash_, dt, anyIgnite, burnScratch_);
+
+    // Log the dead before they are swap-removed. Presentation only; capped
+    // and drawn from reserved capacity, so a tick still never allocates.
+    deaths_.clear();
+    for (uint32_t i = 0; i < enemies_.count(); ++i) {
+        if (enemies_.health[i] > 0.0f) continue;
+        if (deaths_.size() >= kMaxLoggedDeaths) break;
+        const Vec2 v = enemies_.velocity[i];
+        deaths_.push_back(Death{enemies_.position[i],
+                                (lengthSq(v) > 0.0f) ? normalized(v)
+                                                     : Vec2{1.0f, 0.0f},
+                                enemies_.type[i]});
+    }
 
     totalKills_ += cullDead(enemies_);
 

@@ -9,102 +9,17 @@
 #include "app/Bench.h"
 #include "app/Cli.h"
 #include "app/Session.h"
+#include "audio/AudioEngine.h"
 #include "core/FixedTimestep.h"
 #include "gameplay/Level.h"
 #include "gameplay/SpawnDirector.h"
 #include "render/Renderer.h"
+#include "render/Theme.h"
+#include "ui/Screens.h"
 
 namespace {
 
 const char* kSavePath = "laststand.save";
-
-const char* kNodeNames[ls::kNodeCount] = {
-    "Damage",         "Fire Rate",     "Range",          "Base HP",
-    "Base Regen",     "Economy",       "Splash",         "Burn",
-    "Cannon",         "Flamethrower",  "Extra Hardpoint","DENSEST",
-    "MG Overclock",   "MG Ricochet",   "MG Bullet Storm","Explosive Shells",
-    "Knockback",      "Cluster Shot",  "Lingering Flames","Ignite",
-    "Firestorm",      "Airstrike",     "Overcharge",     "Armor Piercing",
-};
-
-const char* kNodeDesc[ls::kNodeCount] = {
-    "+20% dmg/lv",    "+15% rate/lv",  "+12% range/lv", "+300 HP/lv",
-    "+2 HP/s/lv",     "+20% scrap/lv", "+15% splash/lv","+20% burn/lv",
-    "unlock Cannon",  "unlock Flame",  "+1 hardpoint",  "unlock DENSEST",
-    "MG 2x/0.7x",     "MG +1 bounce",  "MG 20th spread","splash +50%",
-    "knockback +150%","4 sub-blasts",  "burn lasts 2x", "burn spreads",
-    "burn 2x",        "unlock strike", "unlock overchg", "+50% vs Tank",
-};
-
-const char* kKindName[3] = {"Machine Gun", "Cannon", "Flamethrower"};
-
-void drawReport(const ls::Session& s) {
-    const ls::Payout& p = s.payout();
-    const ls::BattleResult& r = s.result();
-    const int cx = 300;
-    int y = 140;
-
-    DrawText(r.victory ? "VICTORY" : "DEFEATED", cx, y, 48,
-             r.victory ? Color{150, 220, 255, 255}
-                       : Color{255, 90, 70, 255});
-    y += 56;
-
-    char line[256];
-    std::snprintf(line, sizeof(line), "%u / %u destroyed", r.kills,
-                  r.totalEnemies);
-    DrawText(line, cx, y, 26, Color{220, 230, 245, 255});
-    y += 34;
-
-    std::snprintf(line, sizeof(line), "+ %u SCRAP", p.scrap);
-    DrawText(line, cx, y, 30, Color{255, 220, 120, 255});
-    y += 36;
-
-    std::snprintf(line, sizeof(line), "kill %u   depth %u   best %u",
-                  p.killScrap, p.depthScrap, p.bestBonus);
-    DrawText(line, cx, y, 18, Color{180, 195, 210, 255});
-    y += 28;
-
-    if (p.newBest) {
-        std::snprintf(line, sizeof(line), "NEW BEST  (was %u)", r.previousBest);
-        DrawText(line, cx, y, 20, Color{150, 255, 170, 255});
-        y += 30;
-    }
-
-    DrawText("[R] retry    [U] upgrade    [P] prepare", cx, y + 20, 18,
-             Color{140, 150, 165, 255});
-}
-
-void drawTree(const ls::Session& s, int selected) {
-    const int x = 260;
-    int y = 70;
-    char line[256];
-
-    std::snprintf(line, sizeof(line), "SCRAP  %u", s.scrap());
-    DrawText(line, x, y, 30, Color{255, 220, 120, 255});
-    y += 40;
-
-    for (size_t i = 0; i < ls::kNodeCount; ++i) {
-        const auto node = static_cast<ls::NodeId>(i);
-        const uint32_t lvl = s.tree().level(node);
-        const uint32_t cost = s.tree().cost(node);
-        const bool afford = s.tree().canAfford(node, s.scrap());
-        const bool oneShot = !ls::isRepeatable(node) && lvl > 0u;
-        const std::string lvlText =
-            oneShot ? "OWNED" : (lvl > 0u ? "Lv" + std::to_string(lvl) : "");
-
-        char buf[256];
-        std::snprintf(buf, sizeof(buf), "%s %-16s %-6s cost %-6u %s",
-                      (static_cast<int>(i) == selected) ? ">" : " ",
-                      kNodeNames[i], lvlText.c_str(), cost, kNodeDesc[i]);
-        DrawText(buf, x, y, 17,
-                 afford ? Color{200, 230, 255, 255}
-                        : Color{90, 95, 105, 255});
-        y += 22;
-    }
-
-    DrawText("[UP]/[DOWN] select   [ENTER] buy   [X] respec   [R] retry   [ESC] report",
-             x, 680, 16, Color{140, 150, 165, 255});
-}
 
 // Times the render path alone: the simulation runs so the horde is real and
 // moving, but only renderer.draw() is on the clock. Opens a window because
@@ -157,7 +72,7 @@ int runRenderBench(const ls::Options& options) {
         BeginDrawing();
         ClearBackground(Color{12, 10, 10, 255});
         const auto t0 = std::chrono::steady_clock::now();
-        renderer.draw(world, 0.0f, flags, 0.0, 0.0, settings);
+        renderer.draw(world, 0.0f, flags, settings);
         const auto t1 = std::chrono::steady_clock::now();
         EndDrawing();
 
@@ -205,17 +120,14 @@ int main(int argc, char** argv) {
         std::printf("%s", ls::usageText());
         return 0;
     }
-
     if (options.sweepPath != nullptr) {
         return ls::runSweep(options) ? 0 : 1;
     }
-
     if (options.bench || options.noRender) {
         const ls::BenchResult r = ls::runBench(options);
         ls::printBench(r);
         return 0;
     }
-
     if (options.renderBench > 0u) return runRenderBench(options);
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
@@ -226,127 +138,206 @@ int main(int argc, char** argv) {
         return 1;
     }
     SetTargetFPS(0);
+    SetExitKey(KEY_NULL);   // ESC is the pause/back key, not the quit key
 
     ls::Session session(kSavePath);
+    ls::AudioEngine audio;
+    audio.init();
+    audio.applySettings(session.settings());
+
     ls::FixedTimestep timestep{60.0, 0.25};
     ls::Renderer renderer;
     ls::DebugFlags flags;
-    ls::RenderSettings renderSettings;
-    renderSettings.lod = !options.noLod;
-    renderSettings.batched = !options.noBatch;
+    ls::ui::State ui;
 
-    ls::Phase prevPhase = ls::Phase::Prepare;
+    ls::Phase prevPhase = session.phase();
     double lastTickMs = 0.0;
-    int selectedNode = 0;
+    bool quitRequested = false;
 
     const bool shotMode = options.shotTicks > 0u;
-    if (shotMode) session.startBattle();
+    if (shotMode) {
+        session.goMenu();
+        session.selectLevel(0);
+        session.startBattle();
+    }
 
-    while (!WindowShouldClose()) {
-        // --- input ----------------------------------------------------------
+    while (!WindowShouldClose() && !quitRequested) {
+        const float frameSeconds =
+            shotMode ? static_cast<float>(timestep.tickSeconds())
+                     : GetFrameTime();
+        const ls::Phase phase = session.phase();
+        const bool inBattle = phase == ls::Phase::Battle;
+
+        // --- developer toggles ---------------------------------------------
         if (IsKeyPressed(KEY_F)) flags.showFlowField = !flags.showFlowField;
         if (IsKeyPressed(KEY_G)) flags.showGrid = !flags.showGrid;
         if (IsKeyPressed(KEY_T)) flags.showTurretRange = !flags.showTurretRange;
 
-        switch (session.phase()) {
-            case ls::Phase::Prepare:
-                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                    const Vector2 m = GetMousePosition();
-                    session.setTurretAt(ls::Vec2{m.x, m.y}, 12.0f, 12.0f);
-                }
-                if (IsKeyPressed(KEY_TAB)) session.cycleKind();
-                if (IsKeyPressed(KEY_M)) session.cycleTargeting();
-                if (IsKeyPressed(KEY_ONE)) session.selectLevel(0);
-                if (IsKeyPressed(KEY_TWO)) session.selectLevel(1);
-                if (IsKeyPressed(KEY_THREE)) session.selectLevel(2);
-                if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER)) {
-                    session.startBattle();
-                }
-                break;
-            case ls::Phase::Battle:
-                if (IsKeyPressed(KEY_S)) session.cycleTimeScale();
-                if (IsKeyPressed(KEY_A)) session.fireAirstrike();
-                if (IsKeyPressed(KEY_O)) {
-                    const Vector2 m = GetMousePosition();
-                    session.overchargeAt(ls::Vec2{m.x, m.y});
-                }
-                break;
-            case ls::Phase::Report:
-                if (IsKeyPressed(KEY_R)) session.retry();
-                if (IsKeyPressed(KEY_U)) session.openTree();
-                if (IsKeyPressed(KEY_P)) session.backToPrepare();
-                break;
-            case ls::Phase::Tree:
-                if (IsKeyPressed(KEY_UP)) selectedNode = (selectedNode + 23) % 24;
-                if (IsKeyPressed(KEY_DOWN)) selectedNode = (selectedNode + 1) % 24;
-                if (IsKeyPressed(KEY_ENTER)) {
-                    session.buy(static_cast<ls::NodeId>(selectedNode));
-                }
-                if (IsKeyPressed(KEY_X)) session.respec();
-                if (IsKeyPressed(KEY_R)) session.retry();
-                if (IsKeyPressed(KEY_BACKSPACE) || IsKeyPressed(KEY_ESCAPE)) {
-                    session.backToReport();
-                }
-                break;
+        // --- battle-only input ---------------------------------------------
+        if (inBattle) {
+            if (IsKeyPressed(KEY_S)) session.cycleTimeScale();
+            if (IsKeyPressed(KEY_A)) session.fireAirstrike();
+            if (IsKeyPressed(KEY_O)) {
+                const Vector2 m = GetMousePosition();
+                session.overchargeAt(ls::Vec2{m.x, m.y});
+            }
+        }
+        if (phase == ls::Phase::Prepare &&
+            IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
+            GetMousePosition().y < static_cast<float>(GetScreenHeight()) - 84.0f) {
+            const Vector2 m = GetMousePosition();
+            session.setTurretAt(ls::Vec2{m.x, m.y}, 14.0f, 14.0f);
         }
 
-        // --- simulation ----------------------------------------------------
-        if (session.phase() == ls::Phase::Battle) {
+        // --- simulation -----------------------------------------------------
+        // Hitstop withholds ticks rather than scaling dt, so the fixed
+        // timestep — and therefore determinism — is untouched by juice.
+        if (inBattle && !session.frozen()) {
             if (prevPhase != ls::Phase::Battle) timestep.reset();
-
             const double scale = static_cast<double>(session.timeScale());
-            const double frameSeconds =
+            const double advance =
                 shotMode ? timestep.tickSeconds()
-                         : static_cast<double>(GetFrameTime()) * scale;
-            const int ticks = timestep.advance(frameSeconds);
+                         : static_cast<double>(frameSeconds) * scale;
+            const int ticks = timestep.advance(advance);
             if (ticks > 0) {
                 const auto t0 = std::chrono::steady_clock::now();
                 for (int i = 0; i < ticks; ++i) {
                     session.updateBattle(static_cast<float>(timestep.tickSeconds()));
                 }
                 const auto t1 = std::chrono::steady_clock::now();
-                const double totalMs =
-                    std::chrono::duration<double, std::milli>(t1 - t0).count();
-                lastTickMs = totalMs / static_cast<double>(ticks);
+                lastTickMs = std::chrono::duration<double, std::milli>(t1 - t0)
+                                 .count() / static_cast<double>(ticks);
             }
         }
         prevPhase = session.phase();
 
+        session.updatePresentation(frameSeconds);
+        renderer.tickAnimationClock(frameSeconds);
+        session.setScrapAnchor(
+            ls::Vec2{static_cast<float>(GetScreenWidth()) - 40.0f, 28.0f});
+
+        // --- audio ----------------------------------------------------------
+        const ls::FrameEvents ev = session.takeEvents();
+        audio.update(frameSeconds, ev.kills,
+                     ev.gunShots + ev.cannonShots + ev.flameShots, inBattle);
+        if (ev.arrivals > 0u) audio.play(ls::SoundId::BaseHit);
+        if (ev.airstrike) audio.play(ls::SoundId::Airstrike);
+        if (ev.overcharge) audio.play(ls::SoundId::Overcharge);
+        if (ev.cannonShots > 0u) audio.play(ls::SoundId::Cannon);
+        if (ev.flameShots > 0u) audio.play(ls::SoundId::Flame);
+        if (ev.gunShots > 0u) audio.play(ls::SoundId::Gunshot);
+        if (ev.kills > 0u) audio.play(ls::SoundId::Death);
+        if (ev.battleEnded) {
+            audio.stopBeds();
+            audio.play(ev.victory ? ls::SoundId::Victory : ls::SoundId::Defeat);
+        }
+
         // --- render ---------------------------------------------------------
         BeginDrawing();
-        ClearBackground(Color{12, 10, 10, 255});
+        ClearBackground(ls::theme::kVoid);
+
+        ls::RenderSettings renderSettings;
+        renderSettings.lod = session.settings().levelOfDetail && !options.noLod;
+        renderSettings.batched = !options.noBatch;
+
+        ls::FxScene fx;
+        fx.particles = &session.particles();
+        fx.corpses = &session.corpses();
+        fx.numbers = &session.damageNumbers();
+        fx.showNumbers = session.settings().damageNumbers;
+        fx.shake = session.juice().offset(timestep.totalTicks() +
+                                          static_cast<uint64_t>(GetFPS()));
 
         if (session.world() != nullptr) {
             renderer.draw(*session.world(),
                           static_cast<float>(timestep.alpha()), flags,
-                          static_cast<double>(GetFrameTime()) * 1000.0,
-                          lastTickMs, renderSettings);
+                          renderSettings, fx);
         }
 
-        const bool battlePhases = session.phase() == ls::Phase::Battle ||
-                                  session.phase() == ls::Phase::Prepare;
-        char hint[192];
-        if (battlePhases) {
-            std::snprintf(hint, sizeof(hint),
-                          "L%d %s  kind %s  speed %dx  scrap %u  best %u",
-                          session.levelIndex() + 1, session.level().name.c_str(),
-                          kKindName[static_cast<int>(session.selectedKind())],
-                          session.timeScale(), session.scrap(), session.bestKills());
-        } else {
-            std::snprintf(hint, sizeof(hint), "scrap %u   best %u",
-                          session.scrap(), session.bestKills());
+        // --- screens ---------------------------------------------------------
+        ls::ui::beginFrame(ui.feedback);
+        ls::ui::Result action;
+        switch (session.phase()) {
+            case ls::Phase::Title:
+                action = ls::ui::drawTitle(ui, session, frameSeconds);
+                break;
+            case ls::Phase::Menu:
+                action = ls::ui::drawMenu(ui, session);
+                break;
+            case ls::Phase::Options:
+                action = ls::ui::drawOptions(ui, session);
+                break;
+            case ls::Phase::LevelSelect:
+                action = ls::ui::drawLevelSelect(ui, session);
+                break;
+            case ls::Phase::Prepare:
+                action = ls::ui::drawPrepareHud(ui, session);
+                break;
+            case ls::Phase::Battle:
+                action = ls::ui::drawBattleHud(ui, session);
+                break;
+            case ls::Phase::Pause:
+                action = ls::ui::drawPause(ui, session);
+                break;
+            case ls::Phase::Report:
+                action = ls::ui::drawReport(ui, session);
+                break;
+            case ls::Phase::Tree:
+                action = ls::ui::drawTree(ui, session);
+                break;
         }
-        DrawText(hint, 12, 700, 16, Color{140, 150, 165, 255});
 
-        if (!battlePhases) {
-            const Vector2 s = {static_cast<float>(GetScreenWidth()),
-                               static_cast<float>(GetScreenHeight())};
-            DrawRectangleV(Vector2{0, 0}, s, Color{12, 10, 10, 235});
-            if (session.phase() == ls::Phase::Report) drawReport(session);
-            else if (session.phase() == ls::Phase::Tree) drawTree(session, selectedNode);
+        if (session.settings().debugOverlay && session.world() != nullptr) {
+            renderer.drawDebugOverlay(*session.world(),
+                                      static_cast<double>(frameSeconds) * 1000.0,
+                                      lastTickMs);
         }
-
         EndDrawing();
+
+        // --- act on the screen's intent --------------------------------------
+        if (ui.feedback.moved) audio.play(ls::SoundId::UiMove);
+        if (ui.feedback.accepted) audio.play(ls::SoundId::UiSelect);
+
+        // Any key completes the report's count-up instantly (GDD 13.1).
+        if (session.phase() == ls::Phase::Report && GetKeyPressed() != 0) {
+            session.skipReveal();
+        }
+
+        switch (action.action) {
+            case ls::ui::Action::None: break;
+            case ls::ui::Action::Play:
+                if (session.phase() == ls::Phase::Title) session.goMenu();
+                else session.goLevelSelect();
+                break;
+            case ls::ui::Action::Options: session.goOptions(); break;
+            case ls::ui::Action::Quit: quitRequested = true; break;
+            case ls::ui::Action::Back:
+                audio.play(ls::SoundId::UiBack);
+                if (session.phase() == ls::Phase::Options) session.resume();
+                else if (session.phase() == ls::Phase::Tree) session.backToReport();
+                else session.goMenu();
+                break;
+            case ls::ui::Action::SelectLevel:
+                if (action.value < 0) session.goLevelSelect();
+                else session.selectLevel(action.value);
+                break;
+            case ls::ui::Action::StartBattle: session.startBattle(); break;
+            case ls::ui::Action::CycleKind: session.cycleKind(); break;
+            case ls::ui::Action::CycleTargeting: session.cycleTargeting(); break;
+            case ls::ui::Action::Retry: session.retry(); break;
+            case ls::ui::Action::OpenTree: session.openTree(); break;
+            case ls::ui::Action::BackToPrepare: session.backToPrepare(); break;
+            case ls::ui::Action::Buy:
+                session.buy(static_cast<ls::NodeId>(action.value));
+                break;
+            case ls::ui::Action::Respec: session.respec(); break;
+            case ls::ui::Action::Resume:
+                if (session.phase() == ls::Phase::Battle) session.pause();
+                else session.resume();
+                break;
+            case ls::ui::Action::Abandon: session.abandonBattle(); break;
+            case ls::ui::Action::ToMenu: session.goMenu(); break;
+        }
 
         if (shotMode && timestep.totalTicks() >= options.shotTicks) {
             TakeScreenshot("shot.png");
@@ -355,6 +346,7 @@ int main(int argc, char** argv) {
     }
 
     session.saveNow();
+    audio.shutdown();
     CloseWindow();
     return 0;
 }

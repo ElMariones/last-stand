@@ -88,9 +88,14 @@ Session::Session(const char* savePath)
         tree_.loadLevels(saveData_.nodeLevels);
         bestKills_   = saveData_.bestKills;
         clearCounts_ = saveData_.clearCounts;
+        settings_    = saveData_.settings;
     } else {
         scrap_ = 0u;
     }
+    clampSettings(settings_);
+    timeScale_ = settings_.defaultTimeScale;
+    juice_.setScale(settings_.shake());
+    juice_.setHitstopEnabled(settings_.hitstop);
     effects_ = tree_.bonuses();
     defaultLoadout();
     resetWorld();
@@ -178,6 +183,9 @@ void Session::resetWorld() {
 
     syncWorldTurrets();
     director_ = SpawnDirector{};
+    telemetry_.begin(level_);
+    lastShots_ = {0u, 0u, 0u};
+    resetPresentation();
 }
 
 void Session::cycleKind() {
@@ -240,6 +248,9 @@ void Session::setTurretAt(Vec2 worldPos, float halfW, float halfH) {
 void Session::startBattle() {
     if (phase_ != Phase::Prepare) return;
     director_ = SpawnDirector{};
+    telemetry_.begin(level_);
+    lastShots_ = {0u, 0u, 0u};
+    resetPresentation();
     hasResult_ = false;
     phase_ = Phase::Battle;
 }
@@ -286,6 +297,18 @@ void Session::fireAirstrike() {
     }
     world_->addTracer(Vec2{0.0f, rowY},
                       Vec2{world_->map().grid.worldWidth(), rowY}, 0.15f);
+
+    // The emotional peak of a battle deserves to be loud (GDD 10).
+    events_.airstrike = true;
+    juice_.onDetonation(12.0f);
+    for (int i = 0; i < 12; ++i) {
+        const float x = world_->map().grid.worldWidth() *
+                        (static_cast<float>(i) + 0.5f) / 12.0f;
+        particles_.emitBurst(Vec2{x, rowY}, Vec2{0.0f, 0.0f}, 14u,
+                             ParticleKind::Smoke, 150.0f, 0.75f, fxRng_);
+        particles_.emitBurst(Vec2{x, rowY}, Vec2{0.0f, 0.0f}, 8u,
+                             ParticleKind::Ember, 190.0f, 0.55f, fxRng_);
+    }
 }
 
 void Session::overchargeAt(Vec2 worldPos) {
@@ -302,6 +325,10 @@ void Session::overchargeAt(Vec2 worldPos) {
         if (d < bestD) { bestD = d; best = i; }
     }
     turrets[best].overchargeTtl = kOverchargeTtl;
+    events_.overcharge = true;
+    juice_.onDetonation(3.0f);
+    particles_.emitBurst(turrets[best].position, Vec2{0.0f, 0.0f}, 16u,
+                         ParticleKind::Ember, 120.0f, 0.5f, fxRng_);
 }
 
 void Session::updateBattle(float dt) {
@@ -309,9 +336,137 @@ void Session::updateBattle(float dt) {
     if (airstrikeCd_ > 0.0f) airstrikeCd_ -= dt;
     if (overchargeCd_ > 0.0f) overchargeCd_ -= dt;
 
+    const uint32_t killsBefore = world_->totalKills();
+    const uint32_t arrivalsBefore = world_->totalArrived();
+
     director_.update(*world_, level_, dt);
     world_->tick(dt);
+
+    telemetry_.sample(*world_, dt);
+    emitBattleFx(killsBefore, arrivalsBefore);
+
     if (world_->isOver()) finishBattle();
+}
+
+// Turns what the tick did into particles, corpses, damage numbers, shake and
+// the event record the audio engine reads. All of it downstream of the
+// simulation and none of it able to reach back into it.
+void Session::emitBattleFx(uint32_t killsBefore, uint32_t arrivalsBefore) {
+    const uint32_t kills = world_->totalKills() - killsBefore;
+    const uint32_t arrivals = world_->totalArrived() - arrivalsBefore;
+
+    events_.kills += kills;
+    events_.arrivals += arrivals;
+
+    juice_.onKills(kills);
+    juice_.onBaseHit(arrivals);
+
+    // Shots, totalled per turret kind so the mix can tell a machine gun from
+    // a cannon without the audio engine knowing what a turret is.
+    uint64_t byKind[3] = {0u, 0u, 0u};
+    for (const Turret& t : world_->turrets()) {
+        byKind[static_cast<size_t>(t.kind)] += t.shotsFired;
+    }
+    const auto fired = [](uint64_t now, uint64_t& last) -> uint32_t {
+        const uint32_t delta =
+            (now > last) ? static_cast<uint32_t>(now - last) : 0u;
+        last = now;
+        return delta;
+    };
+    events_.gunShots += fired(byKind[0], lastShots_[0]);
+    events_.cannonShots += fired(byKind[1], lastShots_[1]);
+    events_.flameShots += fired(byKind[2], lastShots_[2]);
+
+    if (kills == 0u && arrivals == 0u) return;
+
+    for (const Death& d : world_->deaths()) {
+        corpses_.add(d.position, d.direction, d.type);
+        particles_.emitBurst(d.position, -d.direction, 3u, ParticleKind::Spark,
+                             90.0f, 0.28f, fxRng_);
+        // Scrap arcs are the reward animation; one per kill would be a storm,
+        // so they are rationed to a readable trickle.
+        if ((fxRng_.nextU32() & 7u) == 0u) {
+            particles_.emitScrapArc(d.position, scrapAnchor_);
+        }
+    }
+
+    if (settings_.damageNumbers) {
+        for (const Death& d : world_->deaths()) {
+            numbers_.add(d.position, statsFor(static_cast<EnemyType>(d.type)).hp);
+        }
+    }
+
+    if (arrivals > 0u) {
+        particles_.emitBurst(world_->base().position, Vec2{0.0f, 0.0f},
+                             10u * arrivals, ParticleKind::Smoke, 70.0f, 0.6f,
+                             fxRng_);
+    }
+}
+
+void Session::resetPresentation() {
+    particles_.clear();
+    corpses_.clear();
+    numbers_.clear();
+    juice_.reset();
+    reportReveal_ = 0.0f;
+    events_ = FrameEvents{};
+}
+
+void Session::updatePresentation(float frameSeconds) {
+    juice_.update(frameSeconds);
+    particles_.update(frameSeconds);
+    corpses_.update(frameSeconds);
+    numbers_.update(frameSeconds);
+    if (phase_ == Phase::Report && reportReveal_ < 1.0f) {
+        reportReveal_ += frameSeconds * 1.6f;
+        if (reportReveal_ > 1.0f) reportReveal_ = 1.0f;
+    }
+}
+
+FrameEvents Session::takeEvents() {
+    const FrameEvents out = events_;
+    events_ = FrameEvents{};
+    return out;
+}
+
+void Session::applySettings() {
+    clampSettings(settings_);
+    juice_.setScale(settings_.shake());
+    juice_.setHitstopEnabled(settings_.hitstop);
+    saveNow();
+}
+
+void Session::goTitle() {
+    // The title screen runs a real battle behind it, dimmed. The simulation
+    // is fast enough to be the menu background, so it is one.
+    resetWorld();
+    phase_ = Phase::Title;
+}
+
+void Session::goMenu() { phase_ = Phase::Menu; }
+
+void Session::goOptions() {
+    returnPhase_ = phase_;
+    phase_ = Phase::Options;
+}
+
+void Session::goLevelSelect() { phase_ = Phase::LevelSelect; }
+
+void Session::pause() {
+    if (phase_ == Phase::Battle) phase_ = Phase::Pause;
+}
+
+void Session::resume() {
+    if (phase_ == Phase::Pause) phase_ = Phase::Battle;
+    else if (phase_ == Phase::Options) phase_ = returnPhase_;
+}
+
+void Session::abandonBattle() {
+    // No payout: leaving a battle is not the same as losing one, and paying
+    // for it would make quitting a strategy.
+    hasResult_ = false;
+    resetWorld();
+    phase_ = Phase::Menu;
 }
 
 void Session::finishBattle() {
@@ -326,7 +481,15 @@ void Session::finishBattle() {
     if (totalKills > bestKills_[li]) bestKills_[li] = totalKills;
     if (result_.victory) ++clearCounts_[li];
 
+    telemetry_.finish(*world_, result_.victory);
+    failure_ = analyse(telemetry_, tree_);
+
+    events_.battleEnded = true;
+    events_.victory = result_.victory;
+    juice_.onDetonation(result_.victory ? 6.0f : 10.0f);
+
     hasResult_ = true;
+    reportReveal_ = 0.0f;
     phase_ = Phase::Report;
     saveNow();
 }
@@ -378,6 +541,7 @@ void Session::saveNow() const {
     }
     d.bestKills = bestKills_;
     d.clearCounts = clearCounts_;
+    d.settings = settings_;
     ls::save(d, savePath_.c_str());
 }
 

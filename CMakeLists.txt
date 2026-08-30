@@ -88,6 +88,8 @@ add_library(laststand_core STATIC
     src/fx/Corpses.cpp
     src/fx/DamageNumbers.cpp
     src/render/Renderer.cpp
+    src/ui/Widgets.cpp
+    src/ui/Screens.cpp
     src/app/Cli.cpp
     src/app/Bench.cpp
     src/app/Session.cpp

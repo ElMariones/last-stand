@@ -1,25 +1,27 @@
 #include "render/Renderer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <raylib.h>
 #include <rlgl.h>
 
+#include "render/Theme.h"
+
 namespace ls {
 
 namespace {
 
-// Palette from GDD 12.1: cold player, warm world, sickly enemies.
-constexpr Color kWall{46, 38, 34, 255};
-constexpr Color kBaseGood{150, 220, 255, 255};
-constexpr Color kBaseBad{255, 90, 70, 255};
-constexpr Color kText{200, 220, 240, 255};
-constexpr Color kFlow{70, 90, 110, 255};
-constexpr Color kTurret{150, 220, 255, 255};
-constexpr Color kHardpoint{90, 90, 96, 255};
-constexpr Color kRange{70, 130, 160, 110};
-constexpr Color kTracer{200, 235, 255, 255};
-constexpr Color kOutline{18, 22, 18, 255};
+constexpr Color kWall       = theme::kWall;
+constexpr Color kBaseGood   = theme::kCold;
+constexpr Color kBaseBad    = theme::kDanger;
+constexpr Color kText       = theme::kInk;
+constexpr Color kFlow       {70, 90, 110, 255};
+constexpr Color kTurret     = theme::kCold;
+constexpr Color kHardpoint  {90, 90, 96, 255};
+constexpr Color kRange      {70, 130, 160, 110};
+constexpr Color kTracer     = theme::kTracer;
+constexpr Color kOutline    = theme::kOutline;
 
 constexpr float kTracerTtl = 0.08f;   // matches CombatSystem
 constexpr float kCullMargin = 24.0f;  // widest body half-extent, rounded up
@@ -39,13 +41,13 @@ inline Color lerpColor(Color a, Color b, float t) {
 Color enemyColor(uint8_t type, float burnDps, float burnTtl) {
     Color base;
     switch (static_cast<ls::EnemyType>(type)) {
-        case ls::EnemyType::Runner: base = Color{130, 210, 150, 255}; break;
-        case ls::EnemyType::Tank:   base = Color{200, 150, 90, 255};  break;
-        default:                    base = Color{168, 200, 120, 255}; break;
+        case ls::EnemyType::Runner: base = theme::kRunner; break;
+        case ls::EnemyType::Tank:   base = theme::kTank;   break;
+        default:                    base = theme::kGrunt;  break;
     }
     if (burnTtl > 0.0f && burnDps > 0.0f) {
         const float f = (burnDps > 12.0f) ? 1.0f : burnDps / 12.0f;
-        base = lerpColor(base, Color{255, 120, 40, 255}, f);
+        base = lerpColor(base, theme::kFireMid, f);
     }
     return base;
 }
@@ -220,31 +222,40 @@ void Renderer::drawHorde(const World& world, float alpha,
 
 // Draws the world content only — it issues draw calls and does NOT own the
 // frame. BeginDrawing/ClearBackground/EndDrawing are the caller's job (main),
-// so this composes with the report/tree overlays without nested begin/end,
-// which is exactly what caused the flicker and frame-pacing jitter.
-void Renderer::draw(const World& world,
-                    float alpha,
-                    const DebugFlags& flags,
-                    double frameMs,
-                    double tickMs,
-                    const RenderSettings& settings) {
+// so this composes with the report/tree overlays without nested begin/end.
+//
+// Everything world-space goes through a Camera2D whose offset is the
+// screenshake, so the shake is one transform rather than an offset threaded
+// through every draw call — and the HUD, drawn outside it, stays legible
+// while the battlefield comes apart.
+void Renderer::drawTerrain(const World& world, const DebugFlags& flags) {
     const LevelMap& map = world.map();
     const Grid&     grid = map.grid;
     const float     cs = grid.cellSize();
 
-    animClock_ += static_cast<float>(frameMs) * 0.001f;
+    DrawRectangleV(Vector2{0.0f, 0.0f},
+                   Vector2{grid.worldWidth(), grid.worldHeight()},
+                   theme::kGround);
 
-    // --- walls -------------------------------------------------------------
+    // Walls get a warm rimlight on their upper edge and a shadow below, which
+    // is what stops a flat top-down field from reading as a spreadsheet.
     for (int cy = 0; cy < grid.rows(); ++cy) {
         for (int cx = 0; cx < grid.cols(); ++cx) {
             if (map.isWalkable(cx, cy)) continue;
             const float x = static_cast<float>(cx) * cs;
             const float y = static_cast<float>(cy) * cs;
             DrawRectangleV(Vector2{x, y}, Vector2{cs, cs}, kWall);
+            if (map.isWalkable(cx, cy - 1)) {
+                DrawRectangleV(Vector2{x, y}, Vector2{cs, 2.0f},
+                               theme::kWallLight);
+            }
+            if (map.isWalkable(cx, cy + 1)) {
+                DrawRectangleV(Vector2{x, y + cs - 2.0f}, Vector2{cs, 2.0f},
+                               theme::kWallShadow);
+            }
         }
     }
 
-    // --- optional debug overlays -------------------------------------------
     if (flags.showGrid) {
         for (int cx = 0; cx <= grid.cols(); ++cx) {
             const float x = static_cast<float>(cx) * cs;
@@ -268,20 +279,90 @@ void Renderer::draw(const World& world,
             }
         }
     }
+}
 
-    // --- enemies (bucketed by density-driven LOD tier) ---------------------
-    const Rect view = viewportRect(static_cast<float>(GetScreenWidth()),
-                                   static_cast<float>(GetScreenHeight()),
-                                   kCullMargin);
-    bucketEnemies(world, alpha, view, settings);
-    drawHorde(world, alpha, settings);
+void Renderer::drawCorpses(const FxScene& fx) {
+    if (fx.corpses == nullptr) return;
+    const CorpseRing& ring = *fx.corpses;
 
-    // --- hardpoints (empty slots) ------------------------------------------
-    for (const Vec2& hp : map.hardpoints) {
-        DrawCircleLinesV(toRl(hp), 10.0f, kHardpoint);
+    // One batch for the whole graveyard, drawn under everything living.
+    rlBegin(RL_TRIANGLES);
+    for (uint32_t s = 0; s < ring.count(); ++s) {
+        const uint32_t i = ring.indexAt(s);
+        const float f = ring.fade(i);
+        const Vec2 p = ring.positionAt(i);
+        const Vec2 d = ring.directionAt(i);
+        const Vec2 side{-d.y, d.x};
+        // Corpses flatten as they fade: a smear, not a sleeping enemy.
+        const float w = 4.0f * (1.0f - f * 0.35f);
+        const Color c = theme::withAlpha(theme::kOutline, 1.0f - f);
+        emit(p + side * w, p - side * w, p - d * (6.0f - f * 2.0f), c);
     }
+    rlEnd();
+}
 
-    // --- turrets and range rings -------------------------------------------
+void Renderer::drawParticles(const FxScene& fx) {
+    if (fx.particles == nullptr) return;
+    const ParticlePool& pool = *fx.particles;
+
+    rlBegin(RL_TRIANGLES);
+    for (uint32_t i = 0; i < pool.count(); ++i) {
+        const float t = pool.progress(i);
+        const Vec2 p = pool.position[i];
+        float size = pool.size[i];
+        Color c{};
+        switch (static_cast<ParticleKind>(pool.kind[i])) {
+            case ParticleKind::Spark:
+                c = theme::mix(theme::kFireCore, theme::kFireMid, t);
+                size *= (1.0f - t * 0.6f);
+                break;
+            case ParticleKind::Ember:
+                c = theme::mix(theme::kFireMid, theme::kFireDeep, t);
+                break;
+            case ParticleKind::Smoke:
+                c = theme::mix(Color{90, 78, 70, 255}, theme::kVoid, t);
+                size *= (1.0f + t * 1.6f);
+                break;
+            case ParticleKind::Flash:
+                c = theme::kFireCore;
+                size *= (1.0f - t);
+                break;
+            case ParticleKind::ScrapArc:
+                c = theme::kScrap;
+                break;
+        }
+        c = theme::withAlpha(c, 1.0f - t * t);
+
+        // A quad as two triangles: cheaper to reason about than a circle and
+        // indistinguishable at these sizes.
+        const Vec2 a{p.x - size, p.y - size};
+        const Vec2 b{p.x + size, p.y - size};
+        const Vec2 d{p.x + size, p.y + size};
+        const Vec2 e{p.x - size, p.y + size};
+        emit(a, e, d, c);
+        emit(a, d, b, c);
+    }
+    rlEnd();
+}
+
+void Renderer::drawNumbers(const FxScene& fx) {
+    if (fx.numbers == nullptr || !fx.showNumbers) return;
+    const DamageNumbers& dn = *fx.numbers;
+    char buf[24];
+    for (uint32_t i = 0; i < dn.count(); ++i) {
+        const float t = dn.progressAt(i);
+        const Vec2 p = dn.positionAt(i);
+        const float amount = dn.amountAt(i);
+        // Bigger hits get bigger type, which is the whole reason to aggregate.
+        const int size = (amount >= 500.0f) ? theme::kBody
+                        : (amount >= 150.0f) ? theme::kSmall : theme::kMicro;
+        std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(amount));
+        DrawText(buf, static_cast<int>(p.x), static_cast<int>(p.y), size,
+                 theme::withAlpha(theme::kInk, 1.0f - t * t));
+    }
+}
+
+void Renderer::drawTurrets(const World& world, const DebugFlags& flags) {
     for (const ls::Turret& t : world.turrets()) {
         if (flags.showTurretRange) {
             DrawCircleLinesV(toRl(t.position), t.range, kRange);
@@ -289,80 +370,128 @@ void Renderer::draw(const World& world,
         switch (t.kind) {
             case ls::TurretKind::MachineGun:
                 DrawCircleV(toRl(t.position), 8.0f, kTurret);
-                DrawCircleLinesV(toRl(t.position), 8.0f, Color{255, 255, 255, 255});
+                DrawCircleLinesV(toRl(t.position), 8.0f, theme::kInk);
                 break;
             case ls::TurretKind::Cannon: {
                 const Rectangle r{t.position.x - 10.0f, t.position.y - 10.0f,
                                   20.0f, 20.0f};
                 DrawRectangleV(Vector2{r.x, r.y}, Vector2{r.width, r.height},
-                               Color{120, 160, 200, 255});
-                DrawRectangleLinesEx(r, 2.0f, Color{255, 255, 255, 255});
+                               theme::kColdDim);
+                DrawRectangleLinesEx(r, 2.0f, theme::kInk);
                 break;
             }
             case ls::TurretKind::Flamethrower: {
                 const Vec2 r{10.0f, 0.0f};
                 const Vec2 u{0.0f, 8.0f};
                 DrawTriangle(toRl(t.position + r), toRl(t.position - r + u),
-                             toRl(t.position - r - u), Color{255, 150, 60, 255});
+                             toRl(t.position - r - u), theme::kFireMid);
                 break;
             }
         }
         if (t.overchargeTtl > 0.0f) {
-            DrawCircleLinesV(toRl(t.position), 13.0f, Color{255, 240, 120, 255});
+            DrawCircleLinesV(toRl(t.position), 13.0f, theme::kScrap);
         } else if (t.overheatTtl > 0.0f) {
-            DrawCircleLinesV(toRl(t.position), 13.0f, Color{255, 70, 50, 255});
+            DrawCircleLinesV(toRl(t.position), 13.0f, theme::kDanger);
         }
     }
+}
 
-    // --- tracers (fading hitscan lines) ------------------------------------
+void Renderer::drawVignette() {
+    // Four gradient bands rather than a texture: no asset, no shader, and it
+    // pulls the eye to the middle of the field where the fighting is.
+    const int w = GetScreenWidth();
+    const int h = GetScreenHeight();
+    const int band = 120;
+    const Color edge = theme::withAlpha(theme::kVoid, 0.75f);
+    const Color none = theme::withAlpha(theme::kVoid, 0.0f);
+    DrawRectangleGradientV(0, 0, w, band, edge, none);
+    DrawRectangleGradientV(0, h - band, w, band, none, edge);
+    DrawRectangleGradientH(0, 0, band, h, edge, none);
+    DrawRectangleGradientH(w - band, 0, band, h, none, edge);
+}
+
+void Renderer::draw(const World& world,
+                    float alpha,
+                    const DebugFlags& flags,
+                    const RenderSettings& settings,
+                    const FxScene& fx) {
+    Camera2D camera{};
+    camera.target = Vector2{0.0f, 0.0f};
+    camera.offset = Vector2{fx.shake.x, fx.shake.y};
+    camera.rotation = 0.0f;
+    camera.zoom = 1.0f;
+
+    BeginMode2D(camera);
+
+    drawTerrain(world, flags);
+    drawCorpses(fx);
+
+    const Rect view = viewportRect(static_cast<float>(GetScreenWidth()),
+                                   static_cast<float>(GetScreenHeight()),
+                                   kCullMargin);
+    bucketEnemies(world, alpha, view, settings);
+    drawHorde(world, alpha, settings);
+
+    for (const Vec2& hp : world.map().hardpoints) {
+        DrawCircleLinesV(toRl(hp), 10.0f, kHardpoint);
+    }
+    drawTurrets(world, flags);
+
+    // Tracers get a bright core over a wider soft body: the difference
+    // between "a line" and "a shot".
     for (uint32_t i = 0; i < world.tracerCount(); ++i) {
         const Tracer& tr = world.tracers()[i];
         const float a = (tr.ttl > 0.0f) ? (tr.ttl / kTracerTtl) : 0.0f;
-        const Color c{
-            kTracer.r, kTracer.g, kTracer.b,
-            static_cast<unsigned char>(a * 255.0f)};
-        DrawLineV(toRl(tr.from), toRl(tr.to), c);
+        DrawLineEx(toRl(tr.from), toRl(tr.to), 3.0f,
+                   theme::withAlpha(theme::kColdDim, a * 0.5f));
+        DrawLineV(toRl(tr.from), toRl(tr.to),
+                  theme::withAlpha(kTracer, a));
     }
 
-    // --- base ---------------------------------------------------------------
+    drawParticles(fx);
+
     const Base& b = world.base();
     const float frac = (b.maxHealth > 0.0f) ? (b.health / b.maxHealth) : 0.0f;
     const Color baseColor = (frac > 0.35f) ? kBaseGood : kBaseBad;
-    DrawCircleV(toRl(b.position), b.radius, baseColor);
+    // The base pulses faster the closer it is to falling.
+    const float pulse =
+        0.5f + 0.5f * std::sin(animClock_ * (3.0f + (1.0f - frac) * 9.0f));
+    DrawCircleV(toRl(b.position), b.radius,
+                theme::mix(theme::kColdDeep, baseColor, 0.55f + pulse * 0.45f));
     DrawCircleLinesV(toRl(b.position), b.radius + 4.0f, baseColor);
+    DrawCircleLinesV(toRl(b.position), b.radius + 8.0f + pulse * 3.0f,
+                     theme::withAlpha(baseColor, 0.35f));
 
-    // --- overlay (raylib text; ImGui arrives in M2) -------------------------
+    drawNumbers(fx);
+
+    EndMode2D();
+
+    drawVignette();
+}
+
+void Renderer::drawDebugOverlay(const World& world, double frameMs,
+                                double tickMs) {
     char line[256];
     std::snprintf(line, sizeof(line),
                   "entities %u   frame %.2f ms   tick %.3f ms   fps %d",
                   stats_.enemies, frameMs, tickMs, GetFPS());
-    DrawText(line, 12, 12, 18, kText);
-
-    std::snprintf(line, sizeof(line), "base %.0f / %.0f    arrived %u    ticks %llu",
-                  static_cast<double>(b.health),
-                  static_cast<double>(b.maxHealth),
-                  world.totalArrived(),
-                  static_cast<unsigned long long>(world.ticks()));
-    DrawText(line, 12, 34, 18, kText);
-
-    std::snprintf(line, sizeof(line), "turrets %zu    shots %llu    kills %u",
-                  world.turrets().size(),
-                  static_cast<unsigned long long>(world.totalShots()),
-                  world.totalKills());
-    DrawText(line, 12, 56, 18, kText);
+    DrawText(line, 12, GetScreenHeight() - 92, theme::kMicro, kText);
 
     std::snprintf(line, sizeof(line),
-                  "lod  full %u  silhouette %u  shape %u   tris %u   batches %u",
+                  "lod  full %u  silhouette %u  shape %u   tris %u  batches %u",
                   stats_.tierCount[0], stats_.tierCount[1], stats_.tierCount[2],
                   stats_.triangles, stats_.batches);
-    DrawText(line, 12, 78, 16, Color{120, 130, 145, 255});
+    DrawText(line, 12, GetScreenHeight() - 76, theme::kMicro,
+             theme::kInkFaint);
 
-    DrawText("[F] flow [G] grid [T] range",
-             12, 100, 16, Color{120, 130, 145, 255});
-
-    if (world.isOver()) {
-        DrawText("BATTLE OVER", 12, 126, 32, kBaseBad);
-    }
+    std::snprintf(line, sizeof(line),
+                  "turrets %zu  shots %llu  kills %u  arrived %u  ticks %llu",
+                  world.turrets().size(),
+                  static_cast<unsigned long long>(world.totalShots()),
+                  world.totalKills(), world.totalArrived(),
+                  static_cast<unsigned long long>(world.ticks()));
+    DrawText(line, 12, GetScreenHeight() - 60, theme::kMicro,
+             theme::kInkFaint);
 }
 
 }  // namespace ls
