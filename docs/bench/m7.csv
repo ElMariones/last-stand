@@ -1,0 +1,11 @@
+stage,peak_entities,ticks,tick_mean_ms,tick_p99_ms,notes
+stage5,100,1200,0.018729,0.038667,18 sectors, 7 enemy kinds; armour, regen, weave, crowding
+stage5,500,1200,0.040626,0.055250,18 sectors, 7 enemy kinds; armour, regen, weave, crowding
+stage5,1000,1200,0.077506,0.106458,18 sectors, 7 enemy kinds; armour, regen, weave, crowding
+stage5,2000,1200,0.202524,0.359833,18 sectors, 7 enemy kinds; armour, regen, weave, crowding
+stage5,5000,1200,0.664840,1.109333,18 sectors, 7 enemy kinds; armour, regen, weave, crowding
+stage4-baseline,100,1200,0.010294,0.012125,M6 code, re-measured today for a like-for-like A/B
+stage4-baseline,500,1200,0.034242,0.042250,M6 code, re-measured today for a like-for-like A/B
+stage4-baseline,1000,1200,0.076393,0.098583,M6 code, re-measured today for a like-for-like A/B
+stage4-baseline,2000,1200,0.188540,0.232417,M6 code, re-measured today for a like-for-like A/B
+stage4-baseline,5000,1200,0.653223,0.892750,M6 code, re-measured today for a like-for-like A/B

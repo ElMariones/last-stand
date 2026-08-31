@@ -11,6 +11,12 @@ namespace {
 // fits inside one cell, which updateMovement checks before taking this path.
 constexpr int kHalfNeighbours[4][2] = {{1, 0}, {-1, 1}, {0, 1}, {1, 1}};
 
+// How fast a weaving enemy swings from one side of its path to the other.
+// About 0.6 s per full cycle: fast enough that a turret's aim slips off it,
+// slow enough to read as a body swerving rather than a sprite vibrating.
+constexpr float kWeaveRadiansPerSecond = 10.0f;
+constexpr float kTwoPi = 6.28318530717958647692f;
+
 // The separation force neighbour j (at jPos) exerts on enemy i (at iPos).
 // Antisymmetric by construction — f(i,j) == -f(j,i) — which is what lets the
 // pair walk compute each interaction once and apply it to both enemies.
@@ -173,11 +179,42 @@ void updateMovement(EnemyPool& pool,
         accumulatePairs(hash, radiusSq, invRadius, pushScratch);
     }
 
+    // Taken once: the loop subscripts it with the raw type byte rather than
+    // calling through statsFor per enemy per tick.
+    //
+    // These two constants were briefly denormalised into per-entity arrays on
+    // the theory that a 36-byte indexed struct load was breaking the
+    // contiguous walk. It measured as no change at all - the cost is touching
+    // the data, not the indirection - so the version that carries no extra
+    // state and no extra work in swap-remove is the one that stayed.
+    const EnemyStats* stats = enemyStatsTable();
+
     for (uint32_t i = 0; i < n; ++i) {
         const Vec2 self = pool.prevPosition[i];
-        const Vec2 desired = field.sample(self) * pool.speed[i];
+        const EnemyStats& s = stats[pool.type[i]];
+
+        const Vec2 flow = field.sample(self);
+        Vec2 desired = flow * pool.speed[i];
+
+        // Weaving kinds slide sideways across their own path. The oscillation
+        // is perpendicular to the FLOW, not to the current velocity, or the
+        // separation force would feed back into it and the weave would grow
+        // until the enemy walked into a wall.
+        const float weave = s.weave;
+        if (weave != 0.0f) {
+            float ph = pool.phase[i] + dt * kWeaveRadiansPerSecond;
+            if (ph > kTwoPi) ph -= kTwoPi;
+            pool.phase[i] = ph;
+            if (lengthSq(flow) > 1e-6f) {
+                const Vec2 perp{-flow.y, flow.x};
+                desired += perp * (std::sin(ph) * weave);
+            }
+        }
+
+        // crowd < 1 makes a kind ignore its neighbours and pile up, which is
+        // what turns Swarmers into a tide instead of a queue.
         const Vec2 velocity =
-            desired + pushScratch[i] * params.separationStrength;
+            desired + pushScratch[i] * (params.separationStrength * s.crowding);
         pool.velocity[i] = velocity;
         pool.position[i] = resolveWalls(map, self, self + velocity * dt);
     }

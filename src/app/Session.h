@@ -88,14 +88,32 @@ public:
     void resume();
     void abandonBattle();          // Pause -> Menu, no payout
     void selectLevel(int idx);
-    // A sector opens when the one before it has been held at least once.
-    // Sector 1 is always open.
+    // The campaign is a graph (see gameplay/Level.h): a sector opens as soon
+    // as ANY of its parent sectors has been held at least once, so tiers fan
+    // out into alternatives rather than a single queue. Tier 0 is always open.
     bool isLevelUnlocked(int idx) const;
     int  furthestUnlockedLevel() const;
+    // Where the campaign wants to send the player next: a sector this victory
+    // just opened if there is one, otherwise the shallowest one still
+    // standing. Returns the current level when there is nowhere new to go.
+    int  suggestedNextLevel() const;
     // True when the battle just won opens something new — the report turns
     // that into its primary action rather than leaving the player to find it.
     bool canAdvance() const;
     void advanceLevel();
+
+    // --- harness hooks -----------------------------------------------------
+    // Used only by the offline tools - the balance harness, which drops a
+    // hypothetical player onto an arbitrary sector with an arbitrary budget,
+    // and the screenshot mode, which has no save and so would find every
+    // sector but the first locked. Deliberately named so that a call site in
+    // the game itself reads as obviously wrong.
+    void grantScrap(uint32_t amount);
+    void selectLevelUnchecked(int idx);
+    // The upgrade screen normally opens off the back of a battle report. The
+    // matrix has to outfit a hypothetical player who has not fought one, so
+    // it needs a way in that does not fake a result.
+    void openTreeDirect();
 
     // --- Prepare: turret placement -----------------------------------------
     TurretKind selectedKind() const { return selectedKind_; }

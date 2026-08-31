@@ -40,6 +40,12 @@ struct Options {
     // print the progression curve. The economy's tuning instrument.
     int      balanceRuns  = 0;
     int      balanceLevel = 0;
+    // --matrix: play every sector at a spread of Scrap budgets.
+    bool     matrix       = false;
+    // --shot-level: which sector a battle/report capture should use. The
+    // later sectors are the only place the newer enemy kinds appear, so
+    // reviewing their art needs a way to ask for one.
+    int      shotLevel    = 0;
 
     // >0: open a window, spawn this many enemies and time `renderTicks`
     // frames of the render path. The LOD numbers come from here.

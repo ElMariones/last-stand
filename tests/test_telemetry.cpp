@@ -131,8 +131,9 @@ TEST_CASE("the analysis never suggests a node already owned") {
 
 TEST_CASE("a dense breach is diagnosed as a density problem") {
     // Hand-built telemetry would need World access, so drive the analyser
-    // through a Level 3 run: Tanks present means armour piercing leads.
-    const ls::Level level = ls::makeLevel3();
+    // through a run on The Split, the first sector to field Tanks: armour
+    // present means armour piercing leads.
+    const ls::Level level = ls::makeLevelByIndex(5);
     ls::World world{level.map, 0x5EEFu};
     for (const ls::Vec2& p : ls::defaultDeployPositions(level.map, 4)) {
         world.placeTurret(p);
@@ -149,7 +150,7 @@ TEST_CASE("a dense breach is diagnosed as a density problem") {
     }
     t.finish(world, world.isVictory());
 
-    CHECK(t.hasTanks());
+    CHECK(t.hasArmored());
     const UpgradeTree tree;
     const ls::FailureAnalysis fa = ls::analyse(t, tree);
     CHECK(fa.suggestions[0] == NodeId::ArmorPiercing);

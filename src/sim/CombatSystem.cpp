@@ -30,21 +30,13 @@ uint32_t applySplashAt(EnemyPool& enemies, const SpatialHash& hash,
         const float falloff = std::max(0.0f, 1.0f - d / radius);
         if (falloff <= 0.0f) return;
 
-        const float pierce =
-            (enemies.type[i] == static_cast<uint8_t>(EnemyType::Tank))
-                ? armorPierce : 1.0f;
-        if (applyDamage(enemies, i, damage * falloff * pierce)) ++kills;
+        if (applyDamage(enemies, i, damage * falloff, armorPierce)) ++kills;
 
         if (knockback > 0.0f && d > 1e-4f) {
             enemies.position[i] += normalized(delta) * (knockback * falloff);
         }
     });
     return kills;
-}
-
-inline float pierceFor(const EnemyPool& enemies, uint32_t i, float armorPierce) {
-    return (enemies.type[i] == static_cast<uint8_t>(EnemyType::Tank)) ? armorPierce
-                                                                      : 1.0f;
 }
 
 uint32_t fireMachineGun(const Turret& t, EnemyPool& enemies,
@@ -68,16 +60,14 @@ uint32_t fireMachineGun(const Turret& t, EnemyPool& enemies,
             hits[nhits++] = j;
         });
         for (uint32_t h = 0; h < nhits; ++h) {
-            if (applyDamage(enemies, hits[h],
-                            t.damage * pierceFor(enemies, hits[h], t.armorPierce))) {
+            if (applyDamage(enemies, hits[h], t.damage, t.armorPierce)) {
                 ++kills;
             }
         }
         return kills;
     }
 
-    if (applyDamage(enemies, target,
-                    t.damage * pierceFor(enemies, target, t.armorPierce))) {
+    if (applyDamage(enemies, target, t.damage, t.armorPierce)) {
         ++kills;
     }
 
@@ -92,9 +82,7 @@ uint32_t fireMachineGun(const Turret& t, EnemyPool& enemies,
             if (d < bestD) { bestD = d; bounce = j; }
         });
         if (bounce != EnemyPool::kInvalid &&
-            applyDamage(enemies, bounce,
-                        t.damage * 0.5f *
-                            pierceFor(enemies, bounce, t.armorPierce))) {
+            applyDamage(enemies, bounce, t.damage * 0.5f, t.armorPierce)) {
             ++kills;
         }
     }
@@ -216,6 +204,7 @@ void updateCombat(std::vector<Turret>& turrets, EnemyPool& enemies,
 void applyBurn(EnemyPool& enemies, const SpatialHash& hash, float dt,
                bool ignite, std::vector<uint8_t>& scratch) {
     const uint32_t n = enemies.count();
+    const EnemyStats* stats = enemyStatsTable();
 
     // Pass 1: tick every burn down and apply its damage, snapshotting who was
     // alight at the start of this tick.
@@ -229,7 +218,13 @@ void applyBurn(EnemyPool& enemies, const SpatialHash& hash, float dt,
         }
         if (ignite) scratch[i] = (dps > 0.0f) ? 1u : 0u;
         ttl -= dt;
-        if (dps > 0.0f) applyDamage(enemies, i, dps * dt);
+        if (dps > 0.0f) {
+            // Burn ignores armour and answers to burnResist instead, which is
+            // what lets a Phantom shrug off a flamethrower while a Brute -
+            // heavily armoured against bullets - still cooks.
+            const float resist = stats[enemies.type[i]].burnResist;
+            applyDamageRaw(enemies, i, dps * dt * (1.0f - resist));
+        }
         if (ttl <= 0.0f) dps = 0.0f;
     }
 

@@ -25,7 +25,7 @@ const char* kSavePath = "laststand.save";
 
 // Drives the session to whatever screen a capture wants, so a screenshot of
 // the upgrade tree does not depend on someone pressing keys fast enough.
-void setUpShot(ls::Session& session, const char* screen) {
+void setUpShot(ls::Session& session, const char* screen, int level) {
     const auto is = [&](const char* name) {
         return std::strcmp(screen, name) == 0;
     };
@@ -37,7 +37,10 @@ void setUpShot(ls::Session& session, const char* screen) {
     if (is("stats")) { session.goStats(); return; }
     if (is("levels")) { session.goLevelSelect(); return; }
 
-    session.selectLevel(is("report") || is("tree") ? 0 : 0);
+    // Unchecked because a capture session has no save, so every sector past
+    // the first is locked and selectLevel would refuse. Reviewing the later
+    // sectors' art is exactly what this mode is for.
+    session.selectLevelUnchecked(level);
     if (is("prepare")) return;
 
     session.startBattle();
@@ -194,6 +197,13 @@ int main(int argc, char** argv) {
     if (options.sweepPath != nullptr) {
         return ls::runSweep(options) ? 0 : 1;
     }
+    if (options.matrix) {
+        // A spread wide enough to show both ends: a player who bought almost
+        // nothing, and one who has been farming.
+        const int budgets[7] = {0, 400, 1500, 5000, 15000, 40000, 80000};
+        ls::printMatrix(ls::runMatrix(budgets, 7));
+        return 0;
+    }
     if (options.balanceRuns > 0) {
         ls::printBalance(ls::runBalance(options.balanceRuns, options.balanceLevel));
         return 0;
@@ -242,7 +252,7 @@ int main(int argc, char** argv) {
     uint64_t shotFrames = 0u;
 
     const bool shotMode = options.shotTicks > 0u;
-    if (shotMode) setUpShot(session, options.shotScreen);
+    if (shotMode) setUpShot(session, options.shotScreen, options.shotLevel);
 
     while (!WindowShouldClose() && !quitRequested) {
         const float frameSeconds =

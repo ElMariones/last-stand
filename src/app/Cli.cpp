@@ -40,6 +40,11 @@ Options parseArgs(int argc, const char* const* argv) {
             uint64_t v = 10u;
             takeValue(argc, argv, i, v);
             o.balanceRuns = static_cast<int>(v);
+        } else if (std::strcmp(a, "--shot-level") == 0) {
+            uint64_t v = 0;
+            if (takeValue(argc, argv, i, v)) o.shotLevel = static_cast<int>(v);
+        } else if (std::strcmp(a, "--matrix") == 0) {
+            o.matrix = true;
         } else if (std::strcmp(a, "--balance-level") == 0) {
             uint64_t v = 0u;
             if (takeValue(argc, argv, i, v)) o.balanceLevel = static_cast<int>(v);
@@ -104,6 +109,8 @@ const char* usageText() {
         "  --naive-separation  use the O(n^2) Stage 0 separation loop\n"
         "  --balance <runs>    auto-play the loop and print the economy curve\n"
         "  --balance-level <n> level index for --balance (default 0)\n"
+        "  --matrix            play every sector at several Scrap budgets\n"
+        "  --shot-level <n>    sector index for a battle/report capture\n"
         "  --render-bench <n>  open a window, draw n enemies, time the frames\n"
         "  --no-lod            draw every enemy at the lowest detail tier\n"
         "  --no-batch          one raylib draw call per enemy (the M4 path)\n"

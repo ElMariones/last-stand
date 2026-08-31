@@ -23,7 +23,12 @@ void playOut(Session& session) {
 // until nothing else is affordable, because that is also what players do.
 int spendEverything(Session& session) {
     int bought = 0;
-    for (int guard = 0; guard < 64; ++guard) {
+    // High enough that the loop always ends because nothing is affordable,
+    // never because it ran out of iterations. At 64 the matrix's top two
+    // budgets produced identical results - the harness was capped, not the
+    // player - which would have read as a difficulty plateau that is not
+    // there.
+    for (int guard = 0; guard < 600; ++guard) {
         bool purchased = false;
 
         // More guns is a real option now, so the model player weighs it: buy
@@ -133,14 +138,82 @@ BalanceReport runBalance(int runs, int levelIndex) {
         }
         report.runs.push_back(run);
 
-        // A cleared level sends the player onward, which is the flow the
-        // economy actually has to support: arrive at Level 2 with the tree
-        // Level 1 paid for, not from scratch.
-        if (run.victory && session.levelIndex() < kLevelCount - 1) {
-            session.selectLevel(session.levelIndex() + 1);
+        // A clear sends the player onward, which is the flow the economy
+        // actually has to support: arrive at the next sector with the tree
+        // the last one paid for, not from scratch. The campaign is a graph
+        // now, so "onward" is whatever the game itself would offer.
+        if (run.victory) {
+            const int next = session.suggestedNextLevel();
+            if (next != session.levelIndex()) session.selectLevel(next);
         }
     }
     return report;
+}
+
+MatrixReport runMatrix(const int* budgets, int budgetCount) {
+    MatrixReport report;
+    for (int sector = 0; sector < kLevelCount; ++sector) {
+        MatrixRow row;
+        row.level = sector;
+        for (int b = 0; b < budgetCount && b < kMaxBudgets; ++b) {
+            // A fresh hypothetical player each time: given exactly this much
+            // Scrap and nothing else, does this sector fall? That is the only
+            // honest way to answer "is the last sector a challenge" - a
+            // campaign playthrough only ever tests the one budget it happened
+            // to arrive with.
+            Session session{nullptr};
+            session.goMenu();
+            session.grantScrap(static_cast<uint32_t>(budgets[b]));
+            session.selectLevelUnchecked(sector);
+            session.openTreeDirect();
+            spendEverything(session);
+            session.backToPrepare();
+            session.autoDeploy();
+            session.startBattle();
+            playOut(session);
+
+            MatrixCell& cell = row.cells[static_cast<size_t>(b)];
+            cell.budget = budgets[b];
+            cell.victory = session.result().victory;
+            cell.kills = session.result().kills;
+            cell.totalEnemies = session.result().totalEnemies;
+            cell.seconds = session.telemetry().elapsedSeconds();
+            row.count = b + 1;
+        }
+        report.rows.push_back(row);
+    }
+    return report;
+}
+
+void printMatrix(const MatrixReport& report) {
+    if (report.rows.empty()) return;
+    std::printf("sector                     tier");
+    for (int b = 0; b < report.rows[0].count; ++b) {
+        std::printf("  %7d", report.rows[0].cells[static_cast<size_t>(b)].budget);
+    }
+    std::printf("\n");
+
+    for (const MatrixRow& row : report.rows) {
+        std::printf("%2d %-22s  %4d", row.level + 1, levelName(row.level),
+                    levelTier(row.level) + 1);
+        for (int b = 0; b < row.count; ++b) {
+            const MatrixCell& c = row.cells[static_cast<size_t>(b)];
+            if (c.victory) {
+                std::printf("    CLEAR");
+            } else {
+                const float pct =
+                    (c.totalEnemies == 0u)
+                        ? 0.0f
+                        : 100.0f * static_cast<float>(c.kills) /
+                              static_cast<float>(c.totalEnemies);
+                std::printf("     %3.0f%%", static_cast<double>(pct));
+            }
+        }
+        std::printf("\n");
+    }
+    std::printf(
+        "\nEach cell is a fresh player handed that much Scrap, told to spend it,\n"
+        "and dropped on that sector. A percentage is how far the invasion got.\n");
 }
 
 void printBalance(const BalanceReport& report) {

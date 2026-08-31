@@ -44,14 +44,36 @@ void applyBurn(EnemyPool& enemies, const SpatialHash& hash, float dt,
 // Swap-removes every enemy with health <= 0. Returns how many were culled.
 uint32_t cullDead(EnemyPool& enemies);
 
-// Applies damage to enemy i, clamping health at 0. Returns true when this
-// shot transitions the enemy from alive to dead.
-inline bool applyDamage(EnemyPool& enemies, uint32_t i, float damage) {
+// Applies damage to enemy i with no mitigation at all, clamping health at 0.
+// Returns true when this transitions the enemy from alive to dead. Burn takes
+// this path: it ticks sixty times a second, so subtracting flat armour from
+// each tick would make any armour whatsoever total immunity to fire.
+inline bool applyDamageRaw(EnemyPool& enemies, uint32_t i, float damage) {
     const float before = enemies.health[i];
     float after = before - damage;
     if (after < 0.0f) after = 0.0f;
     enemies.health[i] = after;
     return (before > 0.0f && after <= 0.0f);
+}
+
+// A single hit, after the target's armour has taken its cut.
+//
+// `pierce` is the turret's Armor Piercing multiplier, and it DIVIDES the
+// armour rather than multiplying the damage. That is the whole point of the
+// node: it is worth exactly as much as the armour it is up against, and
+// nothing at all against a target that has none — so it is a considered
+// purchase against a Brute sector rather than a flat damage upgrade wearing
+// a different name.
+inline bool applyDamage(EnemyPool& enemies, uint32_t i, float damage,
+                        float pierce = 1.0f) {
+    const EnemyStats& s = enemyStatsTable()[enemies.type[i]];
+    if (s.armor > 0.0f) {
+        const float armor = (pierce > 1.0f) ? (s.armor / pierce) : s.armor;
+        const float floorDamage = damage * kMinDamageFraction;
+        damage = damage - armor;
+        if (damage < floorDamage) damage = floorDamage;
+    }
+    return applyDamageRaw(enemies, i, damage);
 }
 
 inline void appendTracer(std::array<Tracer, kMaxTracers>& tracers,

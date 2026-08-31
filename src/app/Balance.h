@@ -38,4 +38,34 @@ BalanceReport runBalance(int runs, int levelIndex = 0);
 
 void printBalance(const BalanceReport& report);
 
+// --------------------------------------------------------- the difficulty ---
+
+// A campaign playthrough only ever tests one budget per sector: whatever the
+// auto-player happened to arrive with. That cannot answer "is the last sector
+// a challenge", because the answer depends entirely on what you bring. The
+// matrix drops a fresh player onto EVERY sector at several fixed budgets, so
+// the difficulty curve is a grid you can read down and across.
+constexpr int kMaxBudgets = 8;
+
+struct MatrixCell {
+    int      budget       = 0;
+    bool     victory      = false;
+    uint32_t kills        = 0u;
+    uint32_t totalEnemies = 0u;
+    float    seconds      = 0.0f;
+};
+
+struct MatrixRow {
+    int        level = 0;
+    int        count = 0;
+    MatrixCell cells[kMaxBudgets];
+};
+
+struct MatrixReport {
+    std::vector<MatrixRow> rows;
+};
+
+MatrixReport runMatrix(const int* budgets, int budgetCount);
+void         printMatrix(const MatrixReport& report);
+
 }  // namespace ls

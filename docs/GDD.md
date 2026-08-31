@@ -247,28 +247,25 @@ Slice ships `FIRST`, `CLOSEST`, `STRONGEST`, `DENSEST`.
 
 ### 6.1 Roster
 
-Six types. Each exists to punish a specific gap in the player's build — that's the entire design brief for an enemy.
+Seven types. Each exists to punish a specific gap in the player's build — that's the entire design brief for an enemy. A kind that only has more HP than the last one is not a new enemy, it is a multiplier with a name.
 
-| Enemy | HP | Speed | Punishes | Slice |
-|---|---|---|---|---|
-| **Grunt** | 100 | 1.0 | nothing — baseline mass | ✅ |
-| **Runner** | 40 | 2.5 | low fire rate, rear-only coverage | ✅ |
-| **Tank** | 2,000 | 0.3 | pure-AoE builds with no single-target DPS | ✅ |
-| **Swarm** | 15 | 1.4 | single-target builds with no AoE | [V1] |
-| **Shield** | 300 | 0.8 | naive targeting; grants nearby allies 50% DR | [V1] |
-| **Elite** | 8,000 | 0.6 | everything; drops 20× Scrap | [V1] |
+| Enemy | HP | Speed | Mechanic | Punishes | Slice |
+|---|---|---|---|---|---|
+| **Grunt** | 100 | 40 | — | nothing — baseline mass | ✅ |
+| **Runner** | 40 | 100 | — | low fire rate, rear-only coverage | ✅ |
+| **Tank** | 2,000 | 12 | armour 3 | pure-AoE builds with no single-target DPS | ✅ |
+| **Swarmer** | 18 | 130 | crowding 0.25 | single-target DPS; packs tight instead of queueing | ✅ |
+| **Brute** | 900 | 30 | armour 7, burn resist 35% | flat damage per shot — a fast weak gun does nothing | ✅ |
+| **Phantom** | 260 | 62 | burn resist 85%, weave 34 | flamethrower walls; aim slides off it | ✅ |
+| **Behemoth** | 9,000 | 9 | regen 55/s, armour 5, arrival ×2.5 | insufficient sustained DPS | ✅ |
 
-**Grunt** is the fluid. It exists in the thousands and is the substance the spectacle is made of.
+**Armour is subtracted per hit**, not as a percentage, which is what makes it a genuinely different question. A Machine Gun doing 5 a shot into 7 points of armour is doing the 15% floor; the same total DPS delivered as one big Cannon shell is barely inconvenienced. This is also the only condition under which **Armor Piercing** is worth buying — it *divides the armour* rather than multiplying damage, so it is worth exactly as much as the armour it meets and nothing at all against a Grunt.
 
-**Runner** arrives before your defense has settled and forces the player to care about coverage depth rather than just total DPS.
+**Crowding** scales the separation force. Below 1 a kind ignores its neighbours and piles up, so Swarmers arrive as a tide rather than a queue — which is both the visual read and the reason splash eats them.
 
-**Tank** is the check on the AoE spiral. Without it, every player converges on Flamethrower + Tesla and the build layer collapses.
+**Weave** is a lateral oscillation perpendicular to the *flow field* (not to current velocity — perpendicular to velocity feeds the separation force back into the weave and it grows until the enemy walks into a wall). A weaving target slides out from under a turret that has already committed its aim.
 
-**Swarm** spawns in packs of 20 from a single spawn event. Cheap HP, huge counts — this is the entity-count pressure valve and the primary tool for making Level 6+ look insane.
-
-**Shield** makes targeting mode a real decision. A `CLOSEST` turret will happily shoot the shielded wall forever; `STRONGEST` cuts the head off.
-
-**Elite** is the risk/reward beat: killing one funds a whole upgrade, ignoring one usually ends the run.
+**Regeneration** is the only mechanic that converts "enough damage eventually" into "enough damage *right now*". It is what keeps a late sector threatening after the player owns every node: chip at a Behemoth and it heals the chip off. It scales with the sector's health multiplier, so the DPS floor it demands stays proportional.
 
 ### 6.2 Movement — the horde as fluid
 
@@ -288,7 +285,13 @@ Separation is resolved against the spatial hash (§14.3), sampling a capped numb
 
 ### 6.3 Scaling
 
-Enemy *count* is the primary difficulty knob. HP and speed multipliers are secondary and are used sparingly — inflating HP makes the game feel slower, whereas inflating count makes it feel bigger. Count is always the better lever for this game's fantasy.
+Enemy *count* is the primary difficulty knob for **spectacle**. It is not, on its own, a difficulty knob at all.
+
+The original claim here was that count is always the better lever. That turned out to be measurably wrong, and the campaign it produced is the evidence: enemy totals climbed an order of magnitude across eight sectors and every sector after the third fell on the first attempt. Count scales the player's kill *count*, and therefore their income, at least as fast as it scales the threat — the two curves cancel, and what is left is a longer battle rather than a harder one.
+
+What actually raises difficulty is **composition**: a kind that the player's current build cannot answer. Armour invalidates damage-per-second in favour of damage-per-shot. Burn resistance invalidates a flamethrower wall. Regeneration invalidates patience. Health multipliers stay deliberately small (1.0 to 4.5 across the whole campaign) and do the fine tuning; the roster does the work.
+
+The measured difficulty curve lives in `--matrix`, which drops a fresh player onto every sector at a spread of fixed Scrap budgets. The first sector falls to 400 Scrap; the last needs 80,000.
 
 ---
 
@@ -350,13 +353,19 @@ Charging for respec punishes exactly the experimentation the build pillar is try
 ### 8.2 Payout formula
 
 ```
-  scrap = (kills × kill_value × economy_mult)
-        + (depth_bonus × progress²)
-        + (elite_kills × elite_value)
-        + personal_best_bonus
+  scrap = (kills * killValue * scrapMult)
+        + (depthWeight * progress^2)
+        + personalBestBonus
+        , all times the defeat / diminishing-replay factor
 ```
 
-Where `progress` is the fraction of the invasion destroyed. The **squared** term is doing important work: it makes getting 90% of the way through a hard level worth substantially more than clearing an easy one, which points the player forward instead of at the farm.
+**`killValue` falls with the sector's tier**, from 4.00 in the first to 0.85 in the last. This is not flavour; it is the fix for a specific measured failure.
+
+A flat kill value makes income *linear* in enemy count, while the upgrade tree makes damage *exponential* in Scrap. Those two curves cross, and after they cross the game funds itself: every purchase is affordable the moment it is wanted, the player is never broke, and the remaining sectors are a formality. In the eight-sector campaign the crossing happened around sector 6.
+
+With the decay, the last tier fields forty times the first tier's invasion and pays about eight times as much for it. The measured result is that the auto-player ends nearly every run of a twenty-run campaign holding less than a third of what that run paid — it is broke the whole way through, which is the condition under which an upgrade is a decision. Scrap piling up *after* the campaign is finished is correct: there is nothing left to buy.
+
+`tests/test_balance.cpp` asserts both halves — that kill value falls tier over tier, and that the player stays broke while sectors remain.
 
 ### 8.3 Losing pays
 
@@ -388,16 +397,30 @@ Beating your previous best kill count on any level grants a flat Scrap bonus, **
 
 ### 9.1 Level table
 
-| Lvl | Name | Enemies | New | Power | Slice |
-|---|---|---|---|---|---|
-| 1 | The Outskirts | 100 | Grunt | 10 | ✅ |
-| 2 | Refinery Gate | 250 | Runner | 25 | ✅ |
-| 3 | The Narrows | 600 | Tank | 60 | ✅ |
-| 4 | Collapsed Span | 1,500 | Swarm | 140 | |
-| 5 | Ore Fields | 4,000 | Shield | 320 | |
-| 6 | The Basin | 10,000 | Elite | 700 | |
-| 7 | Reactor Yard | 25,000 | — | 1,500 | |
-| 8 | Last Stand | 50,000 | — | 3,200 | |
+Eighteen sectors across six difficulty tiers. Tiers past the first hold three or four **alternatives**, not a sequence — the campaign is a graph the player routes through (§9.3).
+
+| # | Tier | Name | Enemies | Debut | Kill value | HP × | Power |
+|---|---|---|---|---|---|---|---|
+| 1 | I CONTACT | The Outskirts | 100 | Grunt | 4.00 | 1.00 | 10 |
+| 2 | II PERIMETER | Refinery Gate | 250 | Runner | 3.20 | 1.10 | 26 |
+| 3 | II | The Narrows | 320 | — | 3.20 | 1.10 | 30 |
+| 4 | II | Culvert | 280 | — | 3.20 | 1.15 | 28 |
+| 5 | II | Scrapyard | 400 | Swarmer | 3.20 | 1.05 | 32 |
+| 6 | III THE BELT | The Split | 700 | Tank | 2.40 | 1.45 | 70 |
+| 7 | III | Foundry | 650 | — | 2.40 | 1.50 | 72 |
+| 8 | III | Aqueduct | 900 | — | 2.40 | 1.40 | 76 |
+| 9 | III | The Hollow | 750 | Brute | 2.40 | 1.55 | 80 |
+| 10 | IV DEEP GROUND | The Spiral | 1,300 | — | 1.70 | 2.00 | 150 |
+| 11 | IV | Crossroads | 1,500 | — | 1.70 | 2.05 | 160 |
+| 12 | IV | Catacombs | 1,200 | Phantom | 1.70 | 2.10 | 155 |
+| 13 | IV | The Pit | 1,400 | — | 1.70 | 2.15 | 165 |
+| 14 | V THE APPROACH | The Gauntlet | 2,200 | — | 1.20 | 2.90 | 300 |
+| 15 | V | Meatgrinder | 2,000 | — | 1.20 | 3.00 | 310 |
+| 16 | V | Causeway | 2,600 | — | 1.20 | 2.80 | 320 |
+| 17 | VI LAST STAND | Open Ground | 3,800 | Behemoth | 0.85 | 4.20 | 520 |
+| 18 | VI | The Breach | 4,200 | — | 0.85 | 4.50 | 560 |
+
+Each new enemy kind debuts **alone**, in a sector that introduces nothing else — meeting armour for the first time alongside weaving and swarming teaches nothing. This is asserted in `tests/test_level.cpp`, not just intended.
 
 ### 9.2 Power rating
 
@@ -421,20 +444,26 @@ Showing an under-powered player exactly how short they are, and then letting the
 
 ### 9.3 Level graph
 
-Levels branch rather than forming a single chain, so the player always has two things to bang their head against and can route around a wall.
+Levels branch rather than forming a single chain, so the player always has several things to bang their head against and can route around a wall.
+
+Every sector past tier I names **two parents** and opens as soon as *either* has been held. Requiring both would quietly turn the graph back into a corridor with extra steps.
 
 ```
-        L1
-         │
-    ┌────┴────┐
-    L2        L3
-    └────┬────┘
-        L4
-    ┌────┴────┐
-    L5        L6
-    └────┬────┘
-        L7 ─▶ L8
+   I        II          III           IV            V           VI
+
+                     ┌── Split ──┬── Spiral ──┬─ Gauntlet ─┬─ Open Ground
+          ┌ Refinery ┤           │            │            │
+          │          ├── Foundry ┼─ Crossroads┼─Meatgrinder ┤
+          ├ Narrows ─┤           │            │            │
+Outskirts ┤          ├─ Aqueduct ┼─ Catacombs ┼─ Causeway ──┴─ The Breach
+          ├ Culvert ─┤           │            │
+          │          └── Hollow ─┴── The Pit ─┘
+          └ Scrapyard
 ```
+
+The tiers are 1 / 4 / 4 / 4 / 3 / 2. The parent of any sector always sits on an earlier tier, which is the single rule that keeps the graph acyclic — a cycle here would be a sector that can never unlock, invisible until a player got stuck on it. `tests/test_level.cpp` checks the rule and that every sector is reachable.
+
+A cleared sector is not a spent one: the map keeps all eighteen visible, and back-tracking to an early tier at endgame power is trivial by design — that *is* the power fantasy being cashed in.
 
 ### 9.4 Map design
 

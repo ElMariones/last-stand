@@ -9,11 +9,17 @@ namespace ls {
 namespace {
 // 'L','S','T','D' as a little-endian uint32.
 constexpr uint32_t kMagic = 0x4454534Cu;
-constexpr uint32_t kVersion = 5u;
+constexpr uint32_t kVersion = 6u;
+
+// Where each of the old eight sectors ended up in the eighteen-sector
+// campaign. A v5 save that had cleared "The Split" recorded it in slot 3; the
+// same sector is now index 5. Copying the block straight across would have
+// credited those clears to Scrapyard and silently unlocked the wrong branch.
+constexpr size_t kLegacyOrder[kLegacyLevels] = {0u, 1u, 2u, 5u, 9u, 10u, 13u, 16u};
 
 // Words after magic+version, per version. v1: scrap + nodes + bests + clears.
 // v2 adds five settings words plus the packed flag word.
-constexpr size_t kBodyWordsV1 = 1u + kNodeCount + 2u * kSaveLevels;
+constexpr size_t kBodyWordsV1 = 1u + kNodeCount + 2u * kLegacyLevels;
 constexpr size_t kSettingsWordsV2 = 6u;
 constexpr size_t kDisplayWordsV3  = 3u;   // width, height, ui scale
 constexpr size_t kBodyWordsV2 = kBodyWordsV1 + kSettingsWordsV2;
@@ -22,13 +28,16 @@ constexpr size_t kArsenalWordsV4 = 3u;
 constexpr size_t kBodyWordsV4 = kBodyWordsV3 + kArsenalWordsV4;
 constexpr size_t kStatsWordsV5 = 8u;
 constexpr size_t kBodyWordsV5 = kBodyWordsV4 + kStatsWordsV5;
+// v6 widened the two level arrays from kLegacyLevels to kSaveLevels.
+constexpr size_t kBodyWordsV6 =
+    kBodyWordsV5 + 2u * (kSaveLevels - kLegacyLevels);
 
 size_t bytesFor(size_t bodyWords) { return 4u * (2u + bodyWords); }
 }  // namespace
 
 std::vector<uint8_t> serialize(const SaveData& data) {
     std::vector<uint8_t> out;
-    out.reserve(bytesFor(kBodyWordsV5));
+    out.reserve(bytesFor(kBodyWordsV6));
 
     const auto put = [&](uint32_t v) {
         out.push_back(static_cast<uint8_t>(v & 0xFFu));
@@ -90,13 +99,27 @@ bool deserialize(const uint8_t* bytes, size_t size, SaveData& out) {
     if (version >= 3u && size < bytesFor(kBodyWordsV3)) return false;
     if (version >= 4u && size < bytesFor(kBodyWordsV4)) return false;
     if (version >= 5u && size < bytesFor(kBodyWordsV5)) return false;
+    if (version >= 6u && size < bytesFor(kBodyWordsV6)) return false;
 
     SaveData d;
-    d.version = kVersion;        // upgraded on read; the next write is v2
+    d.version = kVersion;        // upgraded on read; the next write is current
     d.scrap = get();
     for (auto& v : d.nodeLevels) v = get();
-    for (auto& v : d.bestKills) v = get();
-    for (auto& v : d.clearCounts) v = get();
+
+    if (version >= 6u) {
+        for (auto& v : d.bestKills) v = get();
+        for (auto& v : d.clearCounts) v = get();
+    } else {
+        // Eight slots in the old sector order, scattered into their new homes.
+        uint32_t bests[kLegacyLevels];
+        uint32_t clears[kLegacyLevels];
+        for (auto& v : bests) v = get();
+        for (auto& v : clears) v = get();
+        for (size_t i = 0; i < kLegacyLevels; ++i) {
+            d.bestKills[kLegacyOrder[i]] = bests[i];
+            d.clearCounts[kLegacyOrder[i]] = clears[i];
+        }
+    }
 
     if (version >= 2u) {
         d.settings.masterVolume = static_cast<int>(get());
@@ -161,7 +184,7 @@ bool load(SaveData& out, const char* path) {
     if (f == nullptr) return false;
 
     std::vector<uint8_t> bytes;
-    bytes.reserve(bytesFor(kBodyWordsV5) + 1u);
+    bytes.reserve(bytesFor(kBodyWordsV6) + 1u);
     uint8_t buf[4096];
     size_t n = 0u;
     while ((n = std::fread(buf, 1u, sizeof(buf), f)) > 0u) {

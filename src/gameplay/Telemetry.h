@@ -58,7 +58,14 @@ public:
 
     const Attribution& attribution() const { return attribution_; }
     bool  victory() const { return victory_; }
-    bool  hasTanks() const { return hasTanks_; }
+    // True when the invasion fielded anything with armour - Tanks, Brutes or
+    // Behemoths. Armour is subtracted per hit, so it is the one condition
+    // where the answer is specifically Armor Piercing rather than more of
+    // whatever the player already has.
+    bool  hasArmored() const { return hasArmored_; }
+    // True when something in the invasion repairs itself, which turns "enough
+    // damage eventually" into "enough damage per second".
+    bool  hasRegen() const { return hasRegen_; }
 
 private:
     Lane laneForRow(int row, int rows) const;
@@ -79,7 +86,8 @@ private:
     Lane     breachLane_    = Lane::Centre;
     bool     breached_      = false;
     bool     victory_       = false;
-    bool     hasTanks_      = false;
+    bool     hasArmored_    = false;
+    bool     hasRegen_      = false;
     Attribution attribution_;
 };
 

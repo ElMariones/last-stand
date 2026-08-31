@@ -39,6 +39,12 @@ public:
     std::vector<float>   burnDps;
     std::vector<float>   burnTtl;
 
+    // Weave phase, in radians, for the kinds that do not walk in a straight
+    // line. Seeded per enemy at spawn so a pack of Phantoms is a shoal rather
+    // than a rank, and advanced by movement. Part of the state hash: it moves
+    // enemies, so a replay that ignored it would diverge.
+    std::vector<float>   phase;
+
 private:
     uint32_t count_ = 0u;
 };

@@ -33,17 +33,62 @@ SaveData makeData() {
     return d;
 }
 
-// An older payload: the current bytes with the version word rewritten and
-// everything that version predates chopped off. Both of these are what a save
-// written by an earlier build looks like, and both must still load.
+// What a v1..v5 build actually wrote: EIGHT level slots, in the old sector
+// order, followed by whatever blocks that version had grown by then. Built
+// word by word rather than by truncating a current serialization - a v6 file
+// carries twenty-four slots, so chopping the tail off one produces a byte
+// stream no released build ever wrote, and a migration test fed a fake input
+// proves nothing.
 std::vector<uint8_t> makeOldBytes(uint8_t version) {
-    auto bytes = ls::serialize(makeData());
-    bytes[4] = version;
-    const size_t core = 2u + 1u + ls::kNodeCount + 2u * ls::kSaveLevels;
-    size_t words = core;
-    if (version >= 2u) words += 6u;   // settings block
-    if (version >= 3u) words += 3u;   // window size and ui scale
-    bytes.resize(4u * words);
+    std::vector<uint32_t> w;
+    const SaveData d = makeData();
+
+    w.push_back(0x4454534Cu);                  // 'LSTD'
+    w.push_back(version);
+    w.push_back(d.scrap);
+    for (const uint32_t v : d.nodeLevels) w.push_back(v);
+    // The legacy block, in the legacy order.
+    for (size_t i = 0; i < ls::kLegacyLevels; ++i) {
+        w.push_back(static_cast<uint32_t>(100u + i));
+    }
+    for (size_t i = 0; i < ls::kLegacyLevels; ++i) {
+        w.push_back(static_cast<uint32_t>(i));
+    }
+    if (version >= 2u) {
+        w.push_back(static_cast<uint32_t>(d.settings.masterVolume));
+        w.push_back(static_cast<uint32_t>(d.settings.sfxVolume));
+        w.push_back(static_cast<uint32_t>(d.settings.musicVolume));
+        w.push_back(static_cast<uint32_t>(d.settings.shakeScale));
+        w.push_back(static_cast<uint32_t>(d.settings.defaultTimeScale));
+        w.push_back(ls::packSettingFlags(d.settings));
+    }
+    if (version >= 3u) {
+        w.push_back(static_cast<uint32_t>(d.settings.windowWidth));
+        w.push_back(static_cast<uint32_t>(d.settings.windowHeight));
+        w.push_back(static_cast<uint32_t>(d.settings.uiScale));
+    }
+    if (version >= 4u) {
+        for (const uint32_t v : d.arsenal) w.push_back(v);
+    }
+    if (version >= 5u) {
+        w.push_back(d.stats.runs);
+        w.push_back(d.stats.victories);
+        w.push_back(d.stats.kills);
+        w.push_back(d.stats.scrapEarned);
+        w.push_back(d.stats.secondsPlayed);
+        w.push_back(d.stats.bestRunKills);
+        w.push_back(d.stats.turretsBought);
+        w.push_back(d.stats.nodesBought);
+    }
+
+    std::vector<uint8_t> bytes;
+    bytes.reserve(4u * w.size());
+    for (const uint32_t v : w) {
+        bytes.push_back(static_cast<uint8_t>(v & 0xFFu));
+        bytes.push_back(static_cast<uint8_t>((v >> 8u) & 0xFFu));
+        bytes.push_back(static_cast<uint8_t>((v >> 16u) & 0xFFu));
+        bytes.push_back(static_cast<uint8_t>((v >> 24u) & 0xFFu));
+    }
     return bytes;
 }
 }  // namespace
@@ -112,8 +157,6 @@ TEST_CASE("a version 1 save still loads, with settings defaulted") {
 
     CHECK(out.scrap == expected.scrap);
     CHECK(out.nodeLevels == expected.nodeLevels);
-    CHECK(out.bestKills == expected.bestKills);
-    CHECK(out.clearCounts == expected.clearCounts);
     CHECK(out.settings.masterVolume == defaults.masterVolume);
     CHECK(out.settings.hitstop == defaults.hitstop);
     CHECK(out.settings.uiScale == defaults.uiScale);
@@ -121,6 +164,29 @@ TEST_CASE("a version 1 save still loads, with settings defaulted") {
     // one-way and silent. Compared against SaveData's own default rather
     // than a literal, so bumping the format does not require editing this.
     CHECK(out.version == SaveData{}.version);
+}
+
+TEST_CASE("an old save's eight sectors land on the right eighteen") {
+    // The campaign stopped being a corridor. "The Split" was slot 3 and is now
+    // sector 5; copying the block straight across would have credited those
+    // clears to Scrapyard and unlocked a branch the player never earned.
+    const auto bytes = makeOldBytes(5u);
+    SaveData out;
+    REQUIRE(ls::deserialize(bytes.data(), bytes.size(), out));
+
+    const size_t moved[ls::kLegacyLevels] = {0u, 1u, 2u, 5u, 9u, 10u, 13u, 16u};
+    for (size_t i = 0; i < ls::kLegacyLevels; ++i) {
+        CHECK(out.bestKills[moved[i]] == 100u + i);
+        CHECK(out.clearCounts[moved[i]] == i);
+    }
+
+    // Every slot the old campaign had no sector for starts empty, so a
+    // returning player finds the new branches locked rather than pre-cleared.
+    size_t occupied = 0u;
+    for (size_t i = 0; i < ls::kSaveLevels; ++i) {
+        if (out.bestKills[i] != 0u || out.clearCounts[i] != 0u) ++occupied;
+    }
+    CHECK(occupied <= ls::kLegacyLevels);
 }
 
 TEST_CASE("a version 2 save keeps its settings and defaults only the new ones") {

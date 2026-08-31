@@ -34,7 +34,7 @@ const char* const kNodeDesc[kNodeCount] = {
     "unlock Cannon",   "unlock Flame",   "+1 hardpoint",   "unlock DENSEST",
     "2x rate, 0.7x dmg","+1 bounce",     "20th shot spreads","splash +50%",
     "knockback +150%", "4 sub-blasts",   "burn lasts 2x",  "burn spreads",
-    "burn damage 2x",  "unlock Airstrike","unlock Overcharge","+50% vs Tank",
+    "burn damage 2x",  "unlock Airstrike","unlock Overcharge","halves armour",
 };
 
 float screenW() { return static_cast<float>(GetScreenWidth()); }
@@ -279,26 +279,79 @@ Result drawOptions(State& state, Session& session) {
 
 namespace {
 
-// The campaign laid out as a route rather than a list. Positions are in map
-// space; the screen pans over them, so the board can be bigger than the
-// window and still feel like one place.
-struct SectorNode { float x; float y; };
-constexpr SectorNode kSectorLayout[8] = {
-    {180.0f, 520.0f}, {420.0f, 400.0f}, {690.0f, 470.0f}, {940.0f, 320.0f},
-    {1200.0f, 430.0f}, {1470.0f, 300.0f}, {1740.0f, 440.0f}, {2020.0f, 300.0f},
-};
-constexpr float kMapWidth = 2200.0f;
+// The campaign is a graph, so the board is laid out FROM the graph rather
+// than from a hand-placed list: one column per difficulty tier, the sectors
+// of that tier stacked down it, and an edge drawn for every parent link. Add
+// a sector to gameplay/Level.cpp and it appears here, wired up, on its own.
+constexpr float kTierSpacing = 330.0f;
+// Sized so the widest tier fits a standard board without panning: four nodes
+// at 152 apart pushed the top and bottom rows off the edge, and the top row's
+// name landed on the tier heading.
+constexpr float kSlotSpacing = 110.0f;
+constexpr float kMapLeft     = 190.0f;
+constexpr float kMapMidY     = 300.0f;
+constexpr float kNodeRadius  = 27.0f;
+// Node radius plus room for the sector name underneath it.
+constexpr float kNodeMargin  = 40.0f;
 
-const char* const kSectorBlurb[8] = {
-    "One lane, one chokepoint. Where it starts.",
-    "Two lanes converging. Rear-only coverage dies here.",
-    "An open approach into a hard funnel.",
-    "Two paths that never meet. Split your guns.",
-    "One long switchback. Everything passes you twice.",
-    "Four entrances. Nothing is defended by facing one way.",
-    "Three chokepoints in series. Compress, release, compress.",
-    "No cover, three sides. Purely how fast you can kill.",
-};
+float mapWidth() {
+    return kMapLeft * 2.0f + kTierSpacing * static_cast<float>(kTierCount - 1);
+}
+
+float mapHeight() {
+    return kSlotSpacing * static_cast<float>(kMaxTierWidth - 1) +
+           (kNodeRadius + kNodeMargin) * 2.0f;
+}
+
+// Top of the laid-out content in map space, so panning can be clamped against
+// the real extent rather than an assumed one.
+float mapTopY() {
+    return kMapMidY -
+           kSlotSpacing * static_cast<float>(kMaxTierWidth - 1) * 0.5f -
+           (kNodeRadius + kNodeMargin);
+}
+
+// Position of a sector in map space.
+Vec2 nodeInMap(int index) {
+    const int tier = levelTier(index);
+    const int width = tierWidth(tier);
+    int slot = 0;
+    for (int i = 0; i < width; ++i) {
+        if (levelAtTier(tier, i) == index) slot = i;
+    }
+    const float centred =
+        static_cast<float>(slot) - static_cast<float>(width - 1) * 0.5f;
+    return Vec2{kMapLeft + kTierSpacing * static_cast<float>(tier),
+                kMapMidY + kSlotSpacing * centred};
+}
+
+// Moves focus between tiers, keeping roughly the same height on the board so
+// the selection travels the way the eye expects rather than jumping to slot 0.
+int neighbourAcross(int from, int delta) {
+    const int tier = levelTier(from) + delta;
+    if (tier < 0 || tier >= kTierCount) return from;
+    const float y = nodeInMap(from).y;
+
+    int best = levelAtTier(tier, 0);
+    float bestDy = 1e9f;
+    for (int slot = 0; slot < tierWidth(tier); ++slot) {
+        const int candidate = levelAtTier(tier, slot);
+        const float dy = std::fabs(nodeInMap(candidate).y - y);
+        if (dy < bestDy) { bestDy = dy; best = candidate; }
+    }
+    return best;
+}
+
+int neighbourWithin(int from, int delta) {
+    const int tier = levelTier(from);
+    const int width = tierWidth(tier);
+    int slot = 0;
+    for (int i = 0; i < width; ++i) {
+        if (levelAtTier(tier, i) == from) slot = i;
+    }
+    slot = std::clamp(slot + delta, 0, width - 1);
+    return levelAtTier(tier, slot);
+}
 
 }  // namespace
 
@@ -307,26 +360,33 @@ Result drawLevelSelect(State& state, const Session& session) {
     // battle glowing through it just looks like dirt on the screen.
     scrim(0.965f);
 
-    const float mapTop = screenH() * 0.16f;
-    const float mapH = screenH() * 0.56f;
+    const float mapTop = screenH() * 0.17f;
+    const float mapH = screenH() * 0.57f;
     const Rectangle board{0.0f, mapTop, screenW(), mapH};
 
-    // Centre on the furthest sector the player has opened, once, so a
-    // returning player arrives looking at where they got to.
+    const float spanX = px(mapWidth());
+    const float spanY = px(mapHeight());
+
+    // Open looking at the deepest sector the player has reached, once, so a
+    // returning player arrives where they left off instead of at sector one.
     if (!state.mapCentred) {
-        const int furthest = session.furthestUnlockedLevel();
-        state.mapPan.x = screenW() * 0.5f -
-                         px(kSectorLayout[static_cast<size_t>(furthest)].x);
+        const Vec2 focusAt = nodeInMap(session.furthestUnlockedLevel());
+        state.mapPan.x = screenW() * 0.5f - px(focusAt.x);
+        // Vertically the whole tree is what matters, not one node - centring
+        // on the focused sector shoved the outer slots of a four-wide tier
+        // straight off the board.
+        state.mapPan.y = (board.height - spanY) * 0.5f - px(mapTopY());
         state.mapCentred = true;
     }
 
-    // Drag to pan. Clamped so the route cannot be dragged off the screen
-    // entirely, which is the usual way a pannable board gets lost.
+    // Drag to pan, in both axes now that the board is a tree rather than a
+    // line. Clamped so it cannot be thrown off screen and lost.
     const Vector2 mouse = GetMousePosition();
     if (CheckCollisionPointRec(mouse, board)) {
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             state.mapDragging = true;
-            state.mapGrab = Vec2{mouse.x - state.mapPan.x, 0.0f};
+            state.mapGrab = Vec2{mouse.x - state.mapPan.x,
+                                 mouse.y - state.mapPan.y};
         }
         const float wheel = GetMouseWheelMove();
         if (wheel != 0.0f) state.mapPan.x += wheel * px(60.0f);
@@ -334,37 +394,78 @@ Result drawLevelSelect(State& state, const Session& session) {
     if (state.mapDragging) {
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
             state.mapPan.x = mouse.x - state.mapGrab.x;
+            state.mapPan.y = mouse.y - state.mapGrab.y;
         } else {
             state.mapDragging = false;
         }
     }
-    const float span = px(kMapWidth);
-    state.mapPan.x = std::clamp(state.mapPan.x, screenW() - span - px(120.0f),
-                                px(120.0f));
+    state.mapPan.x = std::clamp(state.mapPan.x, screenW() - spanX - px(60.0f),
+                                px(60.0f));
+    // Clamp against the real content extent. Everything vertical is measured
+    // from mapTopY, so a tree that fits sits centred and one that does not
+    // can still be dragged to either edge and no further.
+    const float topPan = -px(mapTopY());
+    if (spanY <= board.height) {
+        state.mapPan.y = (board.height - spanY) * 0.5f + topPan;
+    } else {
+        state.mapPan.y = std::clamp(state.mapPan.y,
+                                    board.height - spanY + topPan, topPan);
+    }
 
     const auto at = [&](int i) {
-        const SectorNode& n = kSectorLayout[static_cast<size_t>(i)];
+        const Vec2 n = nodeInMap(i);
         return Vector2{state.mapPan.x + px(n.x),
-                       board.y + board.height * 0.5f + px(n.y - 400.0f) * 0.55f};
+                       board.y + state.mapPan.y + px(n.y)};
     };
 
     state.levels.begin(kLevelCount);
+    const int focusBefore = std::clamp(state.levels.index, 0, kLevelCount - 1);
+    int focusNow = focusBefore;
     if (IsKeyPressed(KEY_LEFT) || IsKeyPressedRepeat(KEY_LEFT)) {
-        state.levels.move(-1);
+        focusNow = neighbourAcross(focusNow, -1);
     }
     if (IsKeyPressed(KEY_RIGHT) || IsKeyPressedRepeat(KEY_RIGHT)) {
-        state.levels.move(1);
+        focusNow = neighbourAcross(focusNow, 1);
     }
+    if (IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)) {
+        focusNow = neighbourWithin(focusNow, -1);
+    }
+    if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)) {
+        focusNow = neighbourWithin(focusNow, 1);
+    }
+    state.levels.index = focusNow;
 
-    textCentered("SECTOR MAP", screenW() * 0.5f, screenH() * 0.07f,
+    textCentered("SECTOR MAP", screenW() * 0.5f, screenH() * 0.055f,
                  sz(theme::kTitle), theme::kInk);
 
-    // The route: solid where the player has been, dashed-dim ahead of them.
-    for (int i = 0; i + 1 < kLevelCount; ++i) {
-        const bool travelled = session.isLevelUnlocked(i + 1);
-        DrawLineEx(at(i), at(i + 1), travelled ? 2.5f : 1.5f,
-                   travelled ? theme::withAlpha(theme::kColdDim, 0.9f)
-                             : theme::withAlpha(theme::kColdDeep, 0.9f));
+    // Tier headings sit ABOVE the board, outside the scissor, so the tree can
+    // pan under them and a sector name can never land on one. They follow the
+    // horizontal pan, because a column heading that does not track its column
+    // is worse than no heading.
+    for (int t = 0; t < kTierCount; ++t) {
+        const float x = state.mapPan.x +
+                        px(kMapLeft + kTierSpacing * static_cast<float>(t));
+        if (x < -px(80.0f) || x > screenW() + px(80.0f)) continue;
+        const bool reached = session.isLevelUnlocked(levelAtTier(t, 0));
+        textCentered(tierName(t), x, board.y - px(24.0f), sz(theme::kMicro),
+                     reached ? theme::kInkDim : theme::kInkFaint);
+    }
+
+    BeginScissorMode(static_cast<int>(board.x), static_cast<int>(board.y),
+                     static_cast<int>(board.width),
+                     static_cast<int>(board.height));
+
+    // The edges. An edge is lit once the parent has been held, which makes
+    // the routes the player has actually opened readable at a glance.
+    for (int i = 0; i < kLevelCount; ++i) {
+        int parents[kMaxParents];
+        const int n = levelParents(i, parents);
+        for (int p = 0; p < n; ++p) {
+            const bool travelled = session.clearCountFor(parents[p]) > 0u;
+            DrawLineEx(at(parents[p]), at(i), travelled ? 2.5f : 1.5f,
+                       travelled ? theme::withAlpha(theme::kColdDim, 0.9f)
+                                 : theme::withAlpha(theme::kColdDeep, 0.9f));
+        }
     }
 
     Result result;
@@ -373,16 +474,17 @@ Result drawLevelSelect(State& state, const Session& session) {
         const bool unlocked = session.isLevelUnlocked(i);
         const bool cleared = session.clearCountFor(i) > 0u;
         const bool current = session.levelIndex() == i;
-        const float r = px(26.0f);
+        const float r = px(kNodeRadius);
 
         const Rectangle hit{c.x - r, c.y - r, r * 2.0f, r * 2.0f};
-        if (CheckCollisionPointRec(mouse, hit) && !state.mapDragging) {
+        if (CheckCollisionPointRec(mouse, hit) &&
+            CheckCollisionPointRec(mouse, board) && !state.mapDragging) {
             state.levels.index = i;
         }
         const bool focused = state.levels.isFocused(i);
 
         // Cleared sectors are filled, open ones are outlined, locked ones are
-        // barely there. Status is readable at a glance without reading a word.
+        // barely there. Status is readable without reading a word.
         Color ink = theme::kInkFaint;
         if (cleared) ink = theme::kGood;
         else if (unlocked) ink = theme::kCold;
@@ -391,9 +493,7 @@ Result drawLevelSelect(State& state, const Session& session) {
             DrawCircleV(c, r + px(7.0f), theme::withAlpha(ink, 0.16f));
             DrawCircleLinesV(c, r + px(7.0f), theme::withAlpha(ink, 0.7f));
         }
-        if (cleared) {
-            DrawCircleV(c, r, theme::withAlpha(ink, 0.30f));
-        }
+        if (cleared) DrawCircleV(c, r, theme::withAlpha(ink, 0.30f));
         DrawCircleLinesV(c, r, ink);
         if (current) DrawCircleLinesV(c, r - px(5.0f), theme::withAlpha(ink, 0.8f));
 
@@ -412,7 +512,7 @@ Result drawLevelSelect(State& state, const Session& session) {
                              theme::kInkFaint);
         }
 
-        textCentered(ls::levelName(i), c.x, c.y + r + px(8.0f),
+        textCentered(ls::levelName(i), c.x, c.y + r + px(6.0f),
                      sz(theme::kMicro),
                      unlocked ? theme::kInkDim : theme::kInkFaint);
 
@@ -422,18 +522,20 @@ Result drawLevelSelect(State& state, const Session& session) {
         }
     }
 
+    EndScissorMode();
+
     // The detail card for whatever is focused, pinned below the board so it
     // does not move as the map pans.
     const int sel = std::clamp(state.levels.index, 0, kLevelCount - 1);
-    const Rectangle card = column(660.0f, board.y + board.height + px(12.0f),
-                                  row() * 2.3f);
+    const Rectangle card = column(680.0f, board.y + board.height + px(12.0f),
+                                  row() * 2.4f);
     panel(card);
-    char line[160];
-    std::snprintf(line, sizeof(line), "SECTOR %d  ·  %s", sel + 1,
-                  ls::levelName(sel));
+    char line[192];
+    std::snprintf(line, sizeof(line), "SECTOR %d  ·  %s  ·  %s", sel + 1,
+                  ls::levelName(sel), tierName(levelTier(sel)));
     text(line, card.x + px(theme::kGutter), card.y + px(12.0f),
          sz(theme::kBody), theme::kInk);
-    text(kSectorBlurb[static_cast<size_t>(sel)], card.x + px(theme::kGutter),
+    text(ls::levelBlurb(sel), card.x + px(theme::kGutter),
          card.y + px(38.0f), sz(theme::kMicro), theme::kInkFaint);
 
     if (session.isLevelUnlocked(sel)) {
@@ -445,14 +547,26 @@ Result drawLevelSelect(State& state, const Session& session) {
         textRight("ENTER  deploy", card.x + card.width - px(theme::kGutter),
                   card.y + px(38.0f), sz(theme::kSmall), theme::kGood);
     } else {
-        std::snprintf(line, sizeof(line), "locked  ·  hold sector %d to open it",
-                      sel);
+        // Name the sectors that would open it, rather than "locked". A graph
+        // the player cannot see the edges of is just a wall.
+        int parents[kMaxParents];
+        const int n = levelParents(sel, parents);
+        if (n == 1) {
+            std::snprintf(line, sizeof(line), "locked  ·  hold %s to open it",
+                          ls::levelName(parents[0]));
+        } else if (n >= 2) {
+            std::snprintf(line, sizeof(line),
+                          "locked  ·  hold %s or %s to open it",
+                          ls::levelName(parents[0]), ls::levelName(parents[1]));
+        } else {
+            std::snprintf(line, sizeof(line), "locked");
+        }
         text(line, card.x + px(theme::kGutter), card.y + px(62.0f),
              sz(theme::kMicro), theme::kDanger);
     }
 
-    textCentered("drag or scroll to pan  ·  arrows to choose  ·  esc to go back",
-                 screenW() * 0.5f, screenH() - px(40.0f), sz(theme::kMicro),
+    textCentered("drag to pan  ·  arrows to choose  ·  esc to go back",
+                 screenW() * 0.5f, screenH() - px(36.0f), sz(theme::kMicro),
                  theme::kInkFaint);
 
     if ((IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) &&

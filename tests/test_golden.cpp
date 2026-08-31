@@ -121,9 +121,9 @@ uint64_t level3MixedBuild() {
 //      Both are simulation changes; both move every hash.
 // The scenarios pin their turret positions by hand so that tuning where a
 // default defence stands can never be mistaken for a simulation change.
-constexpr uint64_t kGoldenHorde   = 11714979920487553756ull;
-constexpr uint64_t kGoldenLevel1  = 10523135610880183786ull;
-constexpr uint64_t kGoldenLevel3  = 14577909366883850340ull;
+constexpr uint64_t kGoldenHorde   = 13318753716922102779ull;
+constexpr uint64_t kGoldenLevel1  = 672292474305532204ull;
+constexpr uint64_t kGoldenLevel3  = 13622442721687783473ull;
 
 TEST_CASE("golden: 2,000 grunts, 1,000 ticks, movement and separation only") {
     CHECK(report("hordeOnly", hordeOnly(), kGoldenHorde) == kGoldenHorde);

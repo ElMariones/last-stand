@@ -582,15 +582,33 @@ TEST_CASE("holding a sector opens the next one and offers to advance") {
     }
     REQUIRE(won);
 
-    CHECK(s.isLevelUnlocked(1));
-    CHECK(s.furthestUnlockedLevel() == 1);
+    // Holding tier 0 opens the WHOLE of tier 1 at once - four alternatives,
+    // not the next thing in a queue. That is the campaign graph's entire
+    // point, so it is asserted rather than assumed.
+    for (int slot = 0; slot < ls::tierWidth(1); ++slot) {
+        CHECK(s.isLevelUnlocked(ls::levelAtTier(1, slot)));
+    }
     CHECK(s.canAdvance());
+    CHECK(ls::levelTier(s.suggestedNextLevel()) == 1);
 
     s.advanceLevel();
-    CHECK(s.levelIndex() == 1);
+    CHECK(ls::levelTier(s.levelIndex()) == 1);
     CHECK(s.phase() == Phase::Prepare);
-    // ...and sector 3 is still shut.
-    CHECK_FALSE(s.isLevelUnlocked(2));
+
+    // ...and nothing on tier 2 has opened, because none of its parents has
+    // been held yet.
+    for (int slot = 0; slot < ls::tierWidth(2); ++slot) {
+        CHECK_FALSE(s.isLevelUnlocked(ls::levelAtTier(2, slot)));
+    }
+}
+
+TEST_CASE("a locked sector cannot be entered from the map") {
+    Session s = freshSession();
+    const int deep = ls::levelAtTier(ls::kTierCount - 1, 0);
+    REQUIRE_FALSE(s.isLevelUnlocked(deep));
+
+    s.selectLevel(deep);
+    CHECK(s.levelIndex() != deep);
 }
 
 TEST_CASE("a lost battle offers no advance") {

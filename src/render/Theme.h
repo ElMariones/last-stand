@@ -27,6 +27,13 @@ constexpr Color kTracer     {214, 240, 255, 255};
 constexpr Color kGrunt      {168, 200, 120, 255};
 constexpr Color kRunner     {130, 210, 150, 255};
 constexpr Color kTank       {200, 150,  90, 255};
+// The four kinds the branching campaign added. Each reads as a different
+// SHAPE first and a different colour second, because at four thousand bodies
+// on screen colour alone is a smear.
+constexpr Color kSwarmer    {214, 226, 118, 255};   // pale, almost chitinous
+constexpr Color kBrute      {196,  96,  78, 255};   // plated rust
+constexpr Color kPhantom    {168, 150, 236, 255};   // cold violet
+constexpr Color kBehemoth   {150,  96,  60, 255};   // dark, heavy iron
 constexpr Color kOutline    { 16,  20,  16, 255};
 
 // --- fire ------------------------------------------------------------------

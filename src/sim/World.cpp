@@ -54,6 +54,10 @@ World::World(LevelMap levelMap, uint64_t seed)
 void World::spawnWave(uint32_t count, EnemyType type) {
     if (map_.spawnCells.empty()) return;
 
+    // Regeneration costs a whole extra pass over the pool, so it is only
+    // taken once a kind that actually regenerates has entered the battle.
+    if (statsFor(type).regen > 0.0f) hasRegen_ = true;
+
     const float jitter = map_.grid.cellSize() * 0.4f;
     for (uint32_t i = 0; i < count; ++i) {
         const uint32_t pick =
@@ -65,6 +69,10 @@ void World::spawnWave(uint32_t count, EnemyType type) {
         const uint32_t idx = enemies_.spawn(pos, type);
         if (idx == EnemyPool::kInvalid) return;
         enemies_.health[idx] *= healthMult_;
+        // A shared weave phase would make a pack of Phantoms swing as one
+        // rank. Seeded from the level RNG, so it is varied and still exactly
+        // reproducible.
+        enemies_.phase[idx] = rng_.nextRange(0.0f, 6.28318530718f);
         ++spawned_;
     }
 }
@@ -84,6 +92,25 @@ void World::tick(float dt) {
     if (!base_.isDestroyed() && base_.regenPerSecond > 0.0f) {
         base_.health += base_.regenPerSecond * dt;
         if (base_.health > base_.maxHealth) base_.health = base_.maxHealth;
+    }
+
+    // Self-repairing kinds. Runs before combat so a Behemoth's healing is
+    // something the player's DPS has to out-pace this tick, rather than a
+    // top-up applied to whatever survived. Nothing here can raise the dead:
+    // an enemy at zero health is culled in this same tick, further down.
+    if (hasRegen_) {
+        const EnemyStats* stats = enemyStatsTable();
+        const uint32_t n = enemies_.count();
+        for (uint32_t i = 0; i < n; ++i) {
+            const EnemyStats& s = stats[enemies_.type[i]];
+            if (s.regen <= 0.0f || enemies_.health[i] <= 0.0f) continue;
+            // Regeneration scales with the sector the same way health does, so
+            // "you need this much DPS right now" stays proportional instead
+            // of becoming a rounding error by the last tier.
+            const float maxHp = s.hp * healthMult_;
+            enemies_.health[i] += s.regen * healthMult_ * dt;
+            if (enemies_.health[i] > maxHp) enemies_.health[i] = maxHp;
+        }
     }
 
     // Built twice per tick, deliberately. Separation needs bins over the
@@ -154,6 +181,7 @@ uint64_t World::stateHash() const {
         hashFloat(h, enemies_.health[i]);
         hashFloat(h, enemies_.burnDps[i]);
         hashFloat(h, enemies_.burnTtl[i]);
+        hashFloat(h, enemies_.phase[i]);
         hashBytes(h, &enemies_.type[i], sizeof(uint8_t));
     }
     for (const Turret& t : turrets_) {

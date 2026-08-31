@@ -110,6 +110,7 @@ private:
     uint32_t        spawned_      = 0u;
     uint32_t        levelTotal_   = 0u;
     float           healthMult_   = 1.0f;
+    bool            hasRegen_     = false;
 };
 
 }  // namespace ls

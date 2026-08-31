@@ -34,18 +34,29 @@ struct LevelMap {
 std::vector<Vec2> defaultDeployPositions(const LevelMap& map, int count,
                                          float spacing = 76.0f);
 
-// The eight sectors, in the order the campaign unlocks them. Each is a
-// distinct flow problem rather than a reskin (GDD 9.3): where the horde
-// compresses, where it thins, and where it leaks are different questions on
-// each one.
-LevelMap makeOutskirtsMap();    // 1 single lane through a chokepoint
-LevelMap makeRefineryMap();     // 2 two lanes converging
-LevelMap makeNarrowsMap();      // 3 open field into a hard funnel
-LevelMap makeSplitMap();        // 4 two independent paths, no overlap
-LevelMap makeSpiralMap();       // 5 one long switchback
-LevelMap makeCrossroadsMap();   // 6 four entrances, central base
-LevelMap makeGauntletMap();     // 7 three chokepoints in series
-LevelMap makeOpenGroundMap();   // 8 no cover at all, pure density
+// The eighteen sectors of the campaign. Each is a distinct flow problem
+// rather than a reskin (GDD 9.3): where the horde compresses, where it thins,
+// and where it leaks are different questions on each one. Sectors on the same
+// difficulty tier are alternatives, not a sequence - which is the whole point
+// of a campaign shaped like a graph instead of a corridor.
+LevelMap makeOutskirtsMap();     // T1 single lane through a chokepoint
+LevelMap makeRefineryMap();      // T2 two lanes converging
+LevelMap makeNarrowsMap();       // T2 open field into a hard funnel
+LevelMap makeCulvertMap();       // T2 one corridor folded into an S
+LevelMap makeScrapyardMap();     // T2 scattered cover, broad front
+LevelMap makeSplitMap();         // T3 two independent paths, no overlap
+LevelMap makeFoundryMap();       // T3 one huge block, two ways round
+LevelMap makeAqueductMap();      // T3 three sealed lanes
+LevelMap makeHollowMap();        // T3 an open bowl with nowhere to funnel
+LevelMap makeSpiralMap();        // T4 one long switchback
+LevelMap makeCrossroadsMap();    // T4 four entrances, central base
+LevelMap makeCatacombsMap();     // T4 a maze of offset gaps
+LevelMap makePitMap();           // T4 four corners, base dead centre
+LevelMap makeGauntletMap();      // T5 three chokepoints in series
+LevelMap makeMeatgrinderMap();   // T5 a ring corridor around a solid core
+LevelMap makeCausewayMap();      // T5 two fast lanes onto one bridge
+LevelMap makeOpenGroundMap();    // T6 no cover at all, pure density
+LevelMap makeBreachMap();        // T6 broken wall lines, fed from three sides
 
 // Back-compat alias for the map M1 shipped with.
 LevelMap makeM1Map();

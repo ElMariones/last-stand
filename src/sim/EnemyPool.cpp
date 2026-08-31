@@ -12,6 +12,7 @@ EnemyPool::EnemyPool() {
     speed.resize(cap, 0.0f);
     burnDps.resize(cap, 0.0f);
     burnTtl.resize(cap, 0.0f);
+    phase.resize(cap, 0.0f);
 }
 
 uint32_t EnemyPool::spawn(Vec2 pos, EnemyType enemyType) {
@@ -29,6 +30,7 @@ uint32_t EnemyPool::spawn(Vec2 pos, EnemyType enemyType) {
     speed[s]        = stats.speed;
     burnDps[s]      = 0.0f;
     burnTtl[s]      = 0.0f;
+    phase[s]        = 0.0f;   // World seeds it from the level RNG
     return i;
 }
 
@@ -47,6 +49,7 @@ void EnemyPool::kill(uint32_t i) {
         speed[d]        = speed[l];
         burnDps[d]      = burnDps[l];
         burnTtl[d]      = burnTtl[l];
+        phase[d]        = phase[l];
     }
     count_ = last;
 }

@@ -8,8 +8,14 @@
 
 namespace ls {
 
-// Number of level slots in the save (must cover GDD 9.1's eight levels).
-constexpr size_t kSaveLevels = 8u;
+// Number of level slots in the save. Sized past the current campaign so a
+// new sector does not cost a save version on its own.
+constexpr size_t kSaveLevels = 24u;
+
+// How many slots versions 1-5 wrote, back when the campaign was a corridor of
+// eight. A v5 file's slots are in the OLD sector order, so reading one has to
+// move them, not just copy them (see kLegacyOrder in the .cpp).
+constexpr size_t kLegacyLevels = 8u;
 
 // Everything that persists between sessions (GDD 14.8): Scrap, upgrade-tree
 // levels, per-level bests / clear counts, and the player's options. Small and
@@ -21,8 +27,10 @@ constexpr size_t kSaveLevels = 8u;
 //   3  + window size and UI scale
 //   4  + the turret arsenal (how many of each kind the player owns)
 //   5  + lifetime statistics
+//   6  the campaign became a branching graph of eighteen sectors: the level
+//      slots widened from 8 to 24 and the old eight were re-ordered
 struct SaveData {
-    uint32_t version = 5u;
+    uint32_t version = 6u;
     uint32_t scrap = 0u;
     std::array<uint32_t, kNodeCount> nodeLevels{};
     std::array<uint32_t, kSaveLevels> bestKills{};

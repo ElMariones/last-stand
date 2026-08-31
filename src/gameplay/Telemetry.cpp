@@ -28,9 +28,15 @@ void BattleTelemetry::begin(const Level& level) {
     float lastSpawn = 0.0f;
     for (const SpawnEvent& e : level.schedule) {
         lastSpawn = std::max(lastSpawn, e.timeSeconds);
-        totalHealth_ += statsFor(e.type).hp * static_cast<float>(e.count);
+        const EnemyStats& st = statsFor(e.type);
+        // Sector toughness is part of what the player has to kill. Leaving it
+        // out made "required DPS" read four times too low on the last tier,
+        // which is exactly where the advice matters most.
+        totalHealth_ +=
+            st.hp * level.enemyHealthMult * static_cast<float>(e.count);
         totalEnemies_ += e.count;
-        if (e.type == EnemyType::Tank) hasTanks_ = true;
+        if (st.armor > 0.0f) hasArmored_ = true;
+        if (st.regen > 0.0f) hasRegen_ = true;
     }
     levelSeconds_ = std::max(1.0f, lastSpawn + kTransitSeconds);
 }
@@ -161,8 +167,14 @@ FailureAnalysis analyse(const BattleTelemetry& t, const UpgradeTree& tree) {
     const bool densityProblem = fa.peakDensity >= 40u;
     const bool bigGap = fa.requiredDps > fa.yourDps * 2u;
 
-    if (t.hasTanks() && !tree.has(NodeId::ArmorPiercing)) {
+    if (t.hasArmored() && !tree.has(NodeId::ArmorPiercing)) {
         suggest(NodeId::ArmorPiercing);
+    }
+    // Something out there heals faster than it is being hurt. Fire rate is
+    // the cheapest way to raise a sustained floor, and it does not care about
+    // armour the way a single big shell does.
+    if (t.hasRegen()) {
+        suggest(NodeId::FireRate);
     }
     if (densityProblem) {
         suggest(NodeId::UnlockCannon);

@@ -27,7 +27,12 @@ constexpr float kBaseClearance = 18.0f;
 // What a turret costs, and how fast that climbs. The same 1.35 curve the
 // upgrade tree uses, so the two economies read as one system.
 constexpr uint32_t kTurretBaseCost[3] = {60u, 140u, 130u};
-constexpr double   kTurretCostGrowth = 1.35;
+// Steep on purpose. More guns is the strongest scaling in the game - each one
+// is linear in count AND carries every multiplier the tree has bought - so at
+// 1.35 an afternoon's Scrap bought an artillery park and the back half of the
+// campaign stopped being a question. A tenth gun should be a campaign
+// decision.
+constexpr double   kTurretCostGrowth = 1.55;
 
 // The arsenal a new commander starts with: four machine guns, which is what
 // the four authored emplacements used to hand out for free.
@@ -41,7 +46,11 @@ Turret makeTurret(TurretKind kind, Vec2 pos, const Effects& e) {
     Turret t;
     t.kind = kind;
     t.position = pos;
-    t.armorPierce = e.armorPiercing ? 1.5f : 1.0f;
+    // Divides the target's armour rather than multiplying damage, so the
+    // node is worth exactly as much as the armour it meets and nothing at all
+    // against something unarmoured. 2.0 so the tooltip can say "halves
+    // armour" and mean it literally.
+    t.armorPierce = e.armorPiercing ? 2.0f : 1.0f;
 
     switch (kind) {
         case TurretKind::MachineGun:
@@ -274,9 +283,18 @@ void Session::syncWorldTurrets() {
 }
 
 bool Session::isLevelUnlocked(int idx) const {
-    if (idx <= 0) return true;
-    if (idx >= kLevelCount) return false;
-    return clearCountFor(idx - 1) > 0u;
+    if (idx < 0 || idx >= kLevelCount) return false;
+    if (levelTier(idx) == 0) return true;
+
+    // ANY parent, not all of them. The campaign is a graph the player picks a
+    // route through: requiring every parent would quietly turn it back into a
+    // corridor with extra steps.
+    int parents[kMaxParents];
+    const int n = levelParents(idx, parents);
+    for (int i = 0; i < n; ++i) {
+        if (clearCountFor(parents[i]) > 0u) return true;
+    }
+    return false;
 }
 
 int Session::furthestUnlockedLevel() const {
@@ -287,14 +305,49 @@ int Session::furthestUnlockedLevel() const {
     return furthest;
 }
 
+int Session::suggestedNextLevel() const {
+    // A child of what was just held, if one opened: that is the sector this
+    // victory actually earned, and it is what the report should offer.
+    for (int i = 0; i < kLevelCount; ++i) {
+        if (clearCountFor(i) > 0u || !isLevelUnlocked(i)) continue;
+        int parents[kMaxParents];
+        const int n = levelParents(i, parents);
+        for (int p = 0; p < n; ++p) {
+            if (parents[p] == levelIndex_) return i;
+        }
+    }
+    // Otherwise the shallowest thing still standing, so a player who doubles
+    // back to farm an old sector is not sent to the end of the campaign.
+    for (int i = 0; i < kLevelCount; ++i) {
+        if (isLevelUnlocked(i) && clearCountFor(i) == 0u) return i;
+    }
+    return levelIndex_;
+}
+
 bool Session::canAdvance() const {
-    return hasResult_ && result_.victory && levelIndex_ + 1 < kLevelCount &&
-           isLevelUnlocked(levelIndex_ + 1);
+    return hasResult_ && result_.victory &&
+           suggestedNextLevel() != levelIndex_;
 }
 
 void Session::advanceLevel() {
     if (!canAdvance()) return;
-    selectLevel(levelIndex_ + 1);
+    selectLevel(suggestedNextLevel());
+}
+
+void Session::grantScrap(uint32_t amount) { scrap_ += amount; }
+
+void Session::openTreeDirect() { phase_ = Phase::Tree; }
+
+void Session::selectLevelUnchecked(int idx) {
+    idx = std::clamp(idx, 0, kLevelCount - 1);
+    levelIndex_ = idx;
+    level_ = makeLevelByIndex(idx);
+    defaultLoadout();
+    resetWorld();
+    phase_ = Phase::Prepare;
+    hasResult_ = false;
+    airstrikeCd_ = 0.0f;
+    overchargeCd_ = 0.0f;
 }
 
 void Session::selectLevel(int idx) {

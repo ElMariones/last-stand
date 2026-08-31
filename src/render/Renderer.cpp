@@ -38,9 +38,13 @@ inline Color lerpColor(Color a, Color b, float t) {
 Color enemyColor(uint8_t type, float burnDps, float burnTtl) {
     Color base;
     switch (static_cast<ls::EnemyType>(type)) {
-        case ls::EnemyType::Runner: base = theme::kRunner; break;
-        case ls::EnemyType::Tank:   base = theme::kTank;   break;
-        default:                    base = theme::kGrunt;  break;
+        case ls::EnemyType::Runner:   base = theme::kRunner;   break;
+        case ls::EnemyType::Tank:     base = theme::kTank;     break;
+        case ls::EnemyType::Swarmer:  base = theme::kSwarmer;  break;
+        case ls::EnemyType::Brute:    base = theme::kBrute;    break;
+        case ls::EnemyType::Phantom:  base = theme::kPhantom;  break;
+        case ls::EnemyType::Behemoth: base = theme::kBehemoth; break;
+        default:                      base = theme::kGrunt;    break;
     }
     if (burnTtl > 0.0f && burnDps > 0.0f) {
         const float f = (burnDps > 12.0f) ? 1.0f : burnDps / 12.0f;
@@ -53,7 +57,23 @@ Color enemyColor(uint8_t type, float burnDps, float burnTtl) {
 // primitive: raylib's DrawTriangle sets and clears the shapes texture around
 // every single call, which is what made the horde cost draw-call overhead
 // proportional to entity count.
+//
+// The winding is fixed here rather than by hand at each call site. Backface
+// culling silently discards a triangle wound the wrong way - no warning, no
+// error, the detail simply is not there - and that has now eaten an
+// afternoon twice, because the natural way to read points off a sketch is
+// whichever way you happened to draw it. One cross product per triangle buys
+// the guarantee that a shape as authored is a shape as drawn. It is four
+// multiplies against three vertex submissions, and it is render-side, so the
+// simulation budget never sees it.
 inline void emit(Vec2 a, Vec2 b, Vec2 c, Color col) {
+    const float cross =
+        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    if (cross > 0.0f) {
+        const Vec2 t = b;
+        b = c;
+        c = t;
+    }
     rlColor4ub(col.r, col.g, col.b, col.a);
     rlVertex2f(a.x, a.y);
     rlVertex2f(b.x, b.y);
@@ -61,11 +81,12 @@ inline void emit(Vec2 a, Vec2 b, Vec2 c, Color col) {
 }
 
 struct Body {
-    Vec2  pos;
-    Vec2  dir;
-    Vec2  side;
-    float scale;
-    Color color;
+    Vec2    pos;
+    Vec2    dir;
+    Vec2    side;
+    float   scale;
+    Color   color;
+    uint8_t kind = 0u;
 };
 
 // Tier 2 — one directional shape. What M1 through M4 drew for everything.
@@ -77,18 +98,32 @@ void emitShape(const Body& b) {
 }
 
 // Tier 1 — torso plus head, with a vertical bob. Three triangles.
+//
+// The proportions come from the kind rather than being one shape for
+// everybody: at this density a Brute still has to look wider than a Phantom
+// is long, or the second tier of detail quietly erases the bestiary.
 void emitSilhouette(const Body& b, float phase) {
+    float reach = 5.0f;
+    float width = 3.5f;
+    switch (static_cast<ls::EnemyType>(b.kind)) {
+        case ls::EnemyType::Swarmer:  reach = 6.0f; width = 2.3f; break;
+        case ls::EnemyType::Brute:    reach = 4.2f; width = 5.6f; break;
+        case ls::EnemyType::Phantom:  reach = 8.0f; width = 2.6f; break;
+        case ls::EnemyType::Behemoth: reach = 7.0f; width = 6.4f; break;
+        default: break;
+    }
+
     const float bob = std::sin(phase) * 0.8f * b.scale;
     const Vec2  up  = b.side * bob;
-    const Vec2 tip  = b.pos + b.dir * 5.0f * b.scale + up;
+    const Vec2 tip  = b.pos + b.dir * reach * b.scale + up;
     const Vec2 back = b.pos - b.dir * 4.0f * b.scale + up;
-    const Vec2 hw   = b.side * 3.5f * b.scale;
+    const Vec2 hw   = b.side * width * b.scale;
 
     emit(tip, back - hw, back + hw, b.color);
     emit(back - hw, back + hw, back - b.dir * 2.0f * b.scale, b.color);
 
-    const Vec2 head = b.pos + b.dir * 6.5f * b.scale + up;
-    const Vec2 hhw  = b.side * 1.6f * b.scale;
+    const Vec2 head = b.pos + b.dir * (reach + 1.5f) * b.scale + up;
+    const Vec2 hhw  = b.side * (width * 0.46f) * b.scale;
     emit(head + b.dir * 2.0f * b.scale, head - hhw, head + hhw,
          lerpColor(b.color, Color{255, 255, 255, 255}, 0.25f));
 }
@@ -96,7 +131,7 @@ void emitSilhouette(const Body& b, float phase) {
 // Tier 0 — outline, torso, head, weapon arm and two legs on a sine walk
 // cycle. Seven triangles, and the phase offset is per-enemy so a thin crowd
 // shimmers instead of marching in lockstep.
-void emitFull(const Body& b, float phase) {
+void emitHumanoid(const Body& b, float phase) {
     const float bob = std::sin(phase * 2.0f) * 0.7f * b.scale;
     const Vec2  up  = b.side * bob;
 
@@ -133,6 +168,165 @@ void emitFull(const Body& b, float phase) {
         const Vec2 foot = root - b.dir * 3.2f * b.scale + b.dir * s;
         emit(root - b.side * 0.8f * b.scale, root + b.side * 0.8f * b.scale,
              foot, legCol);
+    }
+}
+
+// Swarmer — a dart, not a soldier. No legs, no weapon arm: it does not walk
+// and it is not carrying anything. Four triangles, and it is small enough
+// that anything more would be mud.
+void emitSwarmer(const Body& b, float phase) {
+    const float skitter = std::sin(phase * 3.0f) * 1.1f * b.scale;
+    const Vec2  up = b.side * skitter;
+
+    const Vec2 tip  = b.pos + b.dir * 6.5f * b.scale + up;
+    const Vec2 back = b.pos - b.dir * 3.0f * b.scale + up;
+    const Vec2 hw   = b.side * 2.4f * b.scale;
+    emit(tip, back - hw, back + hw, b.color);
+    // Split abdomen: two short spurs trailing behind the point.
+    emit(back, back - b.dir * 3.0f * b.scale - b.side * 1.6f * b.scale,
+         back - b.side * 0.6f * b.scale, lerpColor(b.color, kOutline, 0.3f));
+    emit(back, back - b.dir * 3.0f * b.scale + b.side * 1.6f * b.scale,
+         back + b.side * 0.6f * b.scale, lerpColor(b.color, kOutline, 0.3f));
+    // Antennae, swept forward.
+    const Vec2 brow = b.pos + b.dir * 5.0f * b.scale + up;
+    emit(brow + b.dir * 3.5f * b.scale - b.side * 2.6f * b.scale,
+         brow - b.side * 0.4f * b.scale, brow + b.side * 0.4f * b.scale,
+         lerpColor(b.color, Color{255, 255, 255, 255}, 0.35f));
+}
+
+// Brute — armour you can see. A wide slab of a torso under two pauldrons,
+// on legs too short for its bulk. The read has to be "shooting this with a
+// machine gun is a mistake" from across the field.
+void emitBrute(const Body& b, float phase) {
+    const float bob = std::sin(phase * 1.6f) * 0.5f * b.scale;
+    const Vec2  up  = b.side * bob;
+
+    const Vec2 otip  = b.pos + b.dir * 6.0f * b.scale + up;
+    const Vec2 oback = b.pos - b.dir * 5.5f * b.scale + up;
+    const Vec2 ohw   = b.side * 6.4f * b.scale;
+    emit(otip, oback - ohw, oback + ohw, kOutline);
+
+    // Slab torso: two triangles making a broad rectangle rather than a wedge.
+    const Vec2 fwd = b.pos + b.dir * 4.0f * b.scale + up;
+    const Vec2 aft = b.pos - b.dir * 4.0f * b.scale + up;
+    const Vec2 hw  = b.side * 5.0f * b.scale;
+    emit(fwd - hw, fwd + hw, aft - hw, b.color);
+    emit(fwd + hw, aft + hw, aft - hw, b.color);
+
+    // Pauldrons, brighter than the body: the plates are the whole point.
+    const Color plate = lerpColor(b.color, Color{255, 255, 255, 255}, 0.32f);
+    for (int side = 0; side < 2; ++side) {
+        const float s = (side == 0) ? 1.0f : -1.0f;
+        const Vec2 root = b.pos + b.side * (5.0f * s) * b.scale + up;
+        emit(root + b.dir * 3.4f * b.scale,
+             root + b.side * (2.6f * s) * b.scale,
+             root - b.dir * 2.6f * b.scale, plate);
+    }
+
+    // A low, sunken head between the shoulders.
+    const Vec2 head = b.pos + b.dir * 5.2f * b.scale + up;
+    emit(head + b.dir * 1.8f * b.scale, head - b.side * 1.9f * b.scale,
+         head + b.side * 1.9f * b.scale, lerpColor(b.color, kOutline, 0.45f));
+
+    const float swing = std::sin(phase) * 1.6f * b.scale;
+    const Vec2  hip = b.pos - b.dir * 3.4f * b.scale;
+    const Color legCol = lerpColor(b.color, kOutline, 0.3f);
+    for (int leg = 0; leg < 2; ++leg) {
+        const float s = (leg == 0) ? swing : -swing;
+        const Vec2 root = hip + b.side * ((leg == 0) ? 2.6f : -2.6f) * b.scale;
+        const Vec2 foot = root - b.dir * 2.6f * b.scale + b.dir * s;
+        emit(root - b.side * 1.2f * b.scale, root + b.side * 1.2f * b.scale,
+             foot, legCol);
+    }
+}
+
+// Phantom — it does not walk, it streams. A long tapered body with a wake
+// behind it and no legs at all, so a crowd of them reads as something moving
+// differently even before you notice it weaving.
+void emitPhantom(const Body& b, float phase) {
+    const float sway = std::sin(phase * 1.3f) * 1.8f * b.scale;
+    const Vec2  up   = b.side * sway;
+
+    // The wake: a long, dim triangle trailing straight back.
+    const Vec2 tail = b.pos - b.dir * 13.0f * b.scale - up * 1.6f;
+    emit(tail, b.pos - b.side * 2.2f * b.scale, b.pos + b.side * 2.2f * b.scale,
+         theme::withAlpha(b.color, 0.28f));
+
+    const Vec2 tip  = b.pos + b.dir * 8.5f * b.scale + up;
+    const Vec2 back = b.pos - b.dir * 4.0f * b.scale + up;
+    const Vec2 hw   = b.side * 2.9f * b.scale;
+    emit(tip, back - hw, back + hw, b.color);
+
+    // Two swept vanes where a humanoid would have arms.
+    const Color vane = lerpColor(b.color, Color{255, 255, 255, 255}, 0.4f);
+    for (int side = 0; side < 2; ++side) {
+        const float s = (side == 0) ? 1.0f : -1.0f;
+        const Vec2 root = b.pos + b.side * (2.4f * s) * b.scale + up;
+        emit(root + b.dir * 2.0f * b.scale,
+             root + b.side * (5.2f * s) * b.scale - b.dir * 3.0f * b.scale,
+             root - b.dir * 1.4f * b.scale, vane);
+    }
+
+    // A single bright eye, which is all a player needs to pick one out.
+    const Vec2 eye = b.pos + b.dir * 6.0f * b.scale + up;
+    emit(eye + b.dir * 1.4f * b.scale, eye - b.side * 1.0f * b.scale,
+         eye + b.side * 1.0f * b.scale,
+         lerpColor(b.color, Color{255, 255, 255, 255}, 0.75f));
+}
+
+// Behemoth — three segments and four legs, and big enough that the LOD tier
+// it lands in barely matters. There are never many on screen, so it can
+// afford the triangles the horde cannot.
+void emitBehemoth(const Body& b, float phase) {
+    const float bob = std::sin(phase * 0.9f) * 0.6f * b.scale;
+    const Vec2  up  = b.side * bob;
+
+    const Vec2 otip  = b.pos + b.dir * 9.0f * b.scale + up;
+    const Vec2 oback = b.pos - b.dir * 9.5f * b.scale + up;
+    const Vec2 ohw   = b.side * 7.0f * b.scale;
+    emit(otip, oback - ohw, oback + ohw, kOutline);
+
+    const Color shell = lerpColor(b.color, Color{255, 255, 255, 255}, 0.18f);
+    const Color deep  = lerpColor(b.color, kOutline, 0.35f);
+
+    // Abdomen, thorax, head: three plates down the length of it.
+    const struct { float front; float back; float halfWidth; Color col; }
+    segments[3] = {
+        {-1.0f, -8.0f, 5.6f, deep},
+        { 4.5f, -1.5f, 6.2f, b.color},
+        { 8.5f,  4.0f, 3.4f, shell},
+    };
+    for (const auto& seg : segments) {
+        const Vec2 f  = b.pos + b.dir * seg.front * b.scale + up;
+        const Vec2 a  = b.pos + b.dir * seg.back * b.scale + up;
+        const Vec2 hw = b.side * seg.halfWidth * b.scale;
+        emit(f - hw, f + hw, a - hw, seg.col);
+        emit(f + hw, a + hw, a - hw, seg.col);
+    }
+
+    // Four legs on two counter-phased pairs.
+    const Color legCol = lerpColor(b.color, kOutline, 0.25f);
+    for (int leg = 0; leg < 4; ++leg) {
+        const float s = std::sin(phase + static_cast<float>(leg) * 1.57f) *
+                        2.0f * b.scale;
+        const float alongBody = (leg < 2) ? 2.0f : -4.0f;
+        const float sideSign = (leg % 2 == 0) ? 1.0f : -1.0f;
+        const Vec2 root = b.pos + b.dir * alongBody * b.scale +
+                          b.side * (5.8f * sideSign) * b.scale;
+        const Vec2 foot = root + b.side * (3.2f * sideSign) * b.scale +
+                          b.dir * s;
+        emit(root - b.dir * 1.4f * b.scale, root + b.dir * 1.4f * b.scale,
+             foot, legCol);
+    }
+}
+
+void emitFull(const Body& b, float phase) {
+    switch (static_cast<ls::EnemyType>(b.kind)) {
+        case ls::EnemyType::Swarmer:  emitSwarmer(b, phase); break;
+        case ls::EnemyType::Brute:    emitBrute(b, phase); break;
+        case ls::EnemyType::Phantom:  emitPhantom(b, phase); break;
+        case ls::EnemyType::Behemoth: emitBehemoth(b, phase); break;
+        default:                      emitHumanoid(b, phase); break;
     }
 }
 
@@ -185,9 +379,10 @@ void Renderer::drawHorde(const World& world, float alpha,
             const Vec2 fwd = normalized(e.velocity[i]);
             b.dir = (lengthSq(fwd) > 0.0f) ? fwd : Vec2{1.0f, 0.0f};
             b.side = Vec2{-b.dir.y, b.dir.x};
-            // Tanks read as physically bigger in the crowd.
-            b.scale = (e.type[i] == static_cast<uint8_t>(ls::EnemyType::Tank))
-                          ? 1.7f : 1.0f;
+            // Size is the kind's own, straight off the stats table, so a
+            // Swarmer is visibly slight and a Behemoth visibly is not.
+            b.kind = e.type[i];
+            b.scale = ls::enemyStatsTable()[e.type[i]].scale;
             b.color = enemyColor(e.type[i], e.burnDps[i], e.burnTtl[i]);
 
             // A per-enemy phase offset, so the crowd shimmers organically
