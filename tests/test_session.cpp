@@ -589,9 +589,14 @@ TEST_CASE("holding a sector opens the next one and offers to advance") {
         CHECK(s.isLevelUnlocked(ls::levelAtTier(1, slot)));
     }
     CHECK(s.canAdvance());
+    CHECK(s.sectorsOpenedHere() == ls::tierWidth(1));
     CHECK(ls::levelTier(s.suggestedNextLevel()) == 1);
 
-    s.advanceLevel();
+    // The report routes through the sector map rather than jumping the player
+    // somewhere of its own choosing, so this is the trip the player makes.
+    s.goLevelSelect();
+    CHECK(s.phase() == Phase::LevelSelect);
+    s.selectLevel(s.suggestedNextLevel());
     CHECK(ls::levelTier(s.levelIndex()) == 1);
     CHECK(s.phase() == Phase::Prepare);
 
@@ -611,13 +616,16 @@ TEST_CASE("a locked sector cannot be entered from the map") {
     CHECK(s.levelIndex() != deep);
 }
 
-TEST_CASE("a lost battle offers no advance") {
+TEST_CASE("a lost battle opens nothing") {
     Session s = freshSession();
     REQUIRE(playOut(s) == Phase::Report);
     REQUIRE_FALSE(s.result().victory);
     CHECK_FALSE(s.canAdvance());
-    s.advanceLevel();
-    CHECK(s.levelIndex() == 0);
+    CHECK(s.sectorsOpenedHere() == 0);
+    // ...but the map is still reachable, because being stuck on a sector is
+    // exactly when a player needs to go and pick a different one.
+    s.goLevelSelect();
+    CHECK(s.phase() == Phase::LevelSelect);
 }
 
 TEST_CASE("NEW GAME re-locks the campaign") {

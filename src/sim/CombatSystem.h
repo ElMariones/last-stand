@@ -5,6 +5,7 @@
 
 #include "math/Vec2.h"
 #include "sim/EnemyPool.h"
+#include "sim/LevelMap.h"
 #include "sim/SpatialHash.h"
 #include "sim/Turret.h"
 
@@ -24,9 +25,14 @@ struct Tracer {
 // (Cannon), or cone-applied Burn (Flamethrower). Kills are DEFERRED: a
 // killed enemy is left at health 0 and removed by cullDead() after every
 // turret has fired, so the spatial hash stays coherent for the whole loop.
+// `map` is needed because Cannon knockback MOVES enemies, and a shot that
+// shoves someone into a wall leaves them there permanently: the flow field is
+// zero inside geometry, so they never walk out, never die, and the victory
+// condition never fires. Knockback goes through slideAlongWalls for the same
+// reason movement does.
 void updateCombat(std::vector<Turret>& turrets, EnemyPool& enemies,
-                  const SpatialHash& hash, Vec2 basePos, float dt,
-                  std::array<Tracer, kMaxTracers>& tracers,
+                  const SpatialHash& hash, const LevelMap& map, Vec2 basePos,
+                  float dt, std::array<Tracer, kMaxTracers>& tracers,
                   uint32_t& tracerCount);
 
 // Applies Burn damage-over-time and, when `ignite` is set (Flamethrower's

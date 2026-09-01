@@ -631,9 +631,44 @@ The damage-attribution breakdown is a genuine balancing instrument as well as a 
 
 ### 13.3 Screens
 
-`MAIN MENU → LEVEL SELECT → PREPARE → BATTLE → REPORT → UPGRADE TREE`
+```
+TITLE → MENU → SECTOR MAP → PREPARE → BATTLE → REPORT → UPGRADE TREE
+          ↓         ↑                    ↓         ↑         │
+       OPTIONS      └──── M, from anywhere ────────┴─────────┘
+                                        PAUSE
+```
 
 Every arrow is reversible except `BATTLE → REPORT`.
+
+**The map is the hub, not a menu.** A victory does not advance the player to a
+particular sector; it sends them to the map and says what opened. The campaign
+is a graph (§9.3), so choosing the next sector *is* the decision — a "NEXT
+SECTOR" button presents a branching campaign as a corridor and makes the
+choice on the player's behalf, which is the one thing it must not do.
+
+The corollary is that the map has to be reachable from everywhere, including
+mid-battle: `M` from the report, the tree and the pause menu, and a button in
+Prepare beside DEPLOY. Being stuck on a sector is exactly when a player needs
+to go and pick a different one, so the route out must not be reserved for
+winners.
+
+### 13.3a The first run
+
+A contextual tutorial, not a manual. Nine steps, one line each, pinned to the
+bottom of whatever screen is up; each advances when the player performs the
+action rather than when they acknowledge a dialog, which keeps it inside 13.1's
+ban on modal interruptions. It never blocks input, and dismissing it is always
+one key away and visibly labelled.
+
+The steps teach the loop rather than the controls: move a turret, deploy, watch
+what the horde does, change speed, get paid for losing, spend it, retry, hold a
+sector, **choose the next one**. The first step is about *moving* a turret
+rather than placing one, because a sector loads with the player's turrets
+already on the field — and the last is the map, for the reason in 13.3.
+
+A player who runs ahead is not asked to catch up: the step machine re-evaluates
+until it settles, so deploying immediately skips three steps within one frame
+instead of flashing three stale hints.
 
 ### 13.4 UI implementation
 

@@ -16,6 +16,12 @@ struct Settings {
     bool damageNumbers    = true;
     bool levelOfDetail    = true;
     bool debugOverlay     = false;
+    // Whether the first-run tutorial has been completed or skipped. It lives
+    // with the settings rather than with progress because it is a property of
+    // the player, not of the campaign - NEW GAME does not put it back.
+    // Carried in a spare bit of the existing flag word, so adding it cost no
+    // save version: an older save reads it as false, which is exactly right.
+    bool tutorialDone     = false;
 
     // Display. Stored so the game reopens the way the player left it.
     int  windowWidth      = 1280;

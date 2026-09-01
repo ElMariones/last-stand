@@ -24,6 +24,20 @@ struct LevelMap {
     Vec2 baseCenter() const;
 };
 
+// Moves `from` toward `to` without ending up inside geometry: the whole step
+// if it is clear, otherwise each axis alone, so a body slides along a wall
+// rather than stopping dead against it.
+//
+// Anything that MOVES an enemy has to go through this, not just the movement
+// system. The flow field is zero inside a wall, so an enemy that ends up in
+// one stands there for the rest of the battle - alive, which means the
+// victory condition never fires and the run hangs. Cannon knockback learned
+// that the hard way.
+//
+// An enemy already inside geometry is allowed to move freely, so it can get
+// out rather than being sealed in.
+Vec2 slideAlongWalls(const LevelMap& map, Vec2 from, Vec2 to);
+
 // Where a default defence goes: `count` positions arranged outward from the
 // map's deploy anchor, skipping walls and the base. Auto-deploy, the
 // benchmark and the golden scenarios all use it, so "the standard defence"

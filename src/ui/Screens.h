@@ -29,7 +29,9 @@ enum class Action {
     ClearHardpoints,
     Retry,
     Restart,
-    Advance,
+    ToMap,           // open the sector map from wherever we are
+    SkipTutorial,
+    RestartTutorial,
     OpenTree,
     BackToPrepare,
     Buy,             // value = node index
@@ -91,6 +93,11 @@ Result drawBattleHud(State& state, const Session& session);
 Result drawPause(State& state, const Session& session);
 Result drawReport(State& state, const Session& session);
 Result drawTree(State& state, const Session& session);
+
+// The tutorial's coach line, drawn on top of whatever screen is up. Returns
+// SkipTutorial if the player dismissed it. Draws nothing once the tutorial is
+// finished, so the caller can always call it.
+Result drawTutorial(const Session& session);
 
 // The dim wash every full-screen overlay sits on, so the live battle behind
 // the menus reads as background rather than competition.

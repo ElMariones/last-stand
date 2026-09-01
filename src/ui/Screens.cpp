@@ -37,6 +37,14 @@ const char* const kNodeDesc[kNodeCount] = {
     "burn damage 2x",  "unlock Airstrike","unlock Overcharge","halves armour",
 };
 
+// How much vertical room the coach band needs at the bottom of the screen.
+// The full-screen panels subtract it from their own height while the tutorial
+// is running, rather than being covered by it: a hint that hides the button it
+// is telling you to press is worse than no hint at all.
+float tutorialReserve(const Session& session) {
+    return session.tutorial().active() ? px(78.0f) : 0.0f;
+}
+
 float screenW() { return static_cast<float>(GetScreenWidth()); }
 float screenH() { return static_cast<float>(GetScreenHeight()); }
 
@@ -190,11 +198,11 @@ Result drawMenu(State& state, const Session& session) {
 
 Result drawOptions(State& state, Session& session) {
     scrim(0.88f);
-    state.options.begin(13);
+    state.options.begin(14);
     navigate(state.options);
 
     Settings& s = session.settings();
-    const Rectangle box = column(660.0f, screenH() * 0.08f, row() * 15.0f);
+    const Rectangle box = column(660.0f, screenH() * 0.06f, row() * 16.0f);
     panelTitled(box, "OPTIONS");
 
     const Rectangle rowRect{box.x + px(theme::kUnit),
@@ -264,6 +272,16 @@ Result drawOptions(State& state, Session& session) {
     changed |= toggle(at(12), "PERFORMANCE OVERLAY", s.debugOverlay,
                       state.options, 12);
 
+    // Replaying the tutorial must not cost the player their campaign. It is a
+    // property of the player, not of the save's progress, so it gets its own
+    // way back rather than living behind NEW GAME.
+    Result tutorialResult;
+    if (button(at(13), session.tutorial().active() ? "TUTORIAL  ·  RUNNING"
+                                                   : "REPLAY TUTORIAL",
+               state.options, 13, !session.tutorial().active())) {
+        tutorialResult = {Action::RestartTutorial, 0};
+    }
+
     text("esc or the X to go back  ·  changes save immediately",
          box.x + px(theme::kGutter),
          box.y + box.height - px(theme::kUnit * 3.0f), sz(theme::kMicro),
@@ -272,7 +290,7 @@ Result drawOptions(State& state, Session& session) {
     if (changed) session.applySettings();
     if (closeButton(box) || pressedBack()) return {Action::Back, 0};
     if (display) return {Action::ApplyDisplay, 0};
-    return {};
+    return tutorialResult;
 }
 
 // ------------------------------------------------------------ sector map ---
@@ -743,9 +761,11 @@ Result drawPrepareHud(State& state, const Session& session,
 
     struct Kind { TurretKind kind; const char* name; const char* stat; };
     const Kind kinds[3] = {
-        {TurretKind::MachineGun,   "1 MACHINE GUN", "fast, single target"},
-        {TurretKind::Cannon,       "2 CANNON",      "slow, heavy splash"},
-        {TurretKind::Flamethrower, "3 FLAMETHROWER","cone, burns over time"},
+        // Kept short on purpose: the BUY button owns the right-hand end of
+        // this row, so a longer line renders straight through it.
+        {TurretKind::MachineGun,   "1 MACHINE GUN", "fast, single"},
+        {TurretKind::Cannon,       "2 CANNON",      "slow, splash"},
+        {TurretKind::Flamethrower, "3 FLAMETHROWER","cone, burns"},
     };
     Result result;
     float x = screenW() * 0.26f;
@@ -812,11 +832,16 @@ Result drawPrepareHud(State& state, const Session& session,
         x += px(218.0f);
     }
 
-    // DEPLOY is always available, even with empty slots — the player is
-    // allowed to try a sector understaffed, and telling them "no" mid-flow is
-    // worse than letting them find out.
-    const Rectangle deploy{screenW() - px(200.0f), bar.y + px(14.0f),
-                           px(180.0f), px(40.0f)};
+    // The right-hand controls stack vertically rather than sitting side by
+    // side. Laid out in a row they collided with the third turret card at
+    // 1280 wide, which is the default window size.
+    const float ctrlW = px(180.0f);
+    const float ctrlX = screenW() - ctrlW - px(20.0f);
+
+    // DEPLOY is always available, even with turrets still in the crate - the
+    // player is allowed to try a sector understaffed, and telling them "no"
+    // mid-flow is worse than letting them find out.
+    const Rectangle deploy{ctrlX, bar.y + px(10.0f), ctrlW, px(38.0f)};
     const bool ready = deployed > 0;
     DrawRectangleRec(deploy, theme::withAlpha(ready ? theme::kColdDeep
                                                     : Color{40, 24, 24, 255},
@@ -831,11 +856,28 @@ Result drawPrepareHud(State& state, const Session& session,
         result = {Action::StartBattle, 0};
     }
 
-    textRight("drag to move  ·  F auto-deploy  ·  C recall all  ·  M targeting",
-              screenW() - px(theme::kGutter), bar.y + px(58.0f),
-              sz(theme::kMicro), theme::kInkFaint);
-    textRight("L sectors  ·  esc menu", screenW() - px(theme::kGutter),
-              bar.y + px(76.0f), sz(theme::kMicro), theme::kInkFaint);
+    // A button, not just a hotkey line. Every campaign decision is made on
+    // the map now, so it has to be visible from the screen the player spends
+    // the most time on before committing to a battle.
+    const Rectangle toMap{ctrlX, bar.y + px(54.0f), ctrlW, px(32.0f)};
+    const bool mapHot = hovered(toMap);
+    DrawRectangleRec(toMap, theme::withAlpha(Color{20, 19, 23, 255},
+                                             mapHot ? 0.95f : 0.7f));
+    DrawRectangleLinesEx(toMap, 1.0f,
+                         mapHot ? theme::kCold
+                                : theme::withAlpha(theme::kColdDim, 0.9f));
+    textCentered("L   SECTOR MAP", toMap.x + toMap.width * 0.5f,
+                 toMap.y + toMap.height * 0.5f -
+                     static_cast<float>(sz(theme::kMicro)) * 0.5f,
+                 sz(theme::kMicro), mapHot ? theme::kInk : theme::kInkDim);
+    if (mapHot && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        result = {Action::ToMap, 0};
+    }
+
+    // One hint line, under the cards, ending well clear of the controls.
+    text("drag to move  ·  F auto-deploy  ·  C recall all  ·  M targeting  ·  esc menu",
+         screenW() * 0.26f, bar.y + px(78.0f), sz(theme::kMicro),
+         theme::kInkFaint);
 
     drawHardpointOverlay(state, session, viewport);
 
@@ -844,7 +886,7 @@ Result drawPrepareHud(State& state, const Session& session,
     if (IsKeyPressed(KEY_THREE)) return {Action::SelectKind, 2};
     if (IsKeyPressed(KEY_F)) return {Action::FillHardpoints, 0};   // auto-deploy
     if (IsKeyPressed(KEY_C)) return {Action::ClearHardpoints, 0};
-    if (IsKeyPressed(KEY_L)) return {Action::SelectLevel, -1};
+    if (IsKeyPressed(KEY_L)) return {Action::ToMap, 0};
     if (pressedBack()) return {Action::ToMenu, 0};
     if (IsKeyPressed(KEY_M)) return {Action::CycleTargeting, 0};
     if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER)) {
@@ -972,14 +1014,14 @@ Result drawBattleHud(State& state, const Session& session) {
 Result drawPause(State& state, const Session& session) {
     (void)session;
     scrim(0.78f);
-    state.pause.begin(4);
+    state.pause.begin(5);
     navigate(state.pause);
 
     const float cx = screenW() * 0.5f;
     textCentered("PAUSED", cx, screenH() * 0.26f, sz(theme::kTitle),
                  theme::kInk);
 
-    const Rectangle box = column(320.0f, screenH() * 0.40f, row() * 4.0f);
+    const Rectangle box = column(320.0f, screenH() * 0.38f, row() * 5.0f);
     const auto at = [&](int i) {
         return Rectangle{box.x, box.y + row() * static_cast<float>(i), box.width,
                          row()};
@@ -990,10 +1032,15 @@ Result drawPause(State& state, const Session& session) {
     if (button(at(1), "RESTART SECTOR", state.pause, 1)) {
         result = {Action::Restart, 0};
     }
-    if (button(at(2), "OPTIONS", state.pause, 2)) result = {Action::Options, 0};
-    if (button(at(3), "ABANDON", state.pause, 3)) result = {Action::Abandon, 0};
+    // Leaving mid-battle should land where the next decision gets made. The
+    // main menu is a dead end you have to walk back out of; the map is the
+    // place you go to pick something else, which is the actual reason anyone
+    // abandons a sector.
+    if (button(at(2), "SECTOR MAP", state.pause, 2)) result = {Action::ToMap, 0};
+    if (button(at(3), "OPTIONS", state.pause, 3)) result = {Action::Options, 0};
+    if (button(at(4), "ABANDON", state.pause, 4)) result = {Action::Abandon, 0};
 
-    textCentered("abandoning pays nothing", cx, box.y + row() * 4.4f,
+    textCentered("leaving a battle pays nothing", cx, box.y + row() * 5.4f,
                  sz(theme::kMicro), theme::kInkFaint);
     if (pressedBack()) return {Action::Resume, 0};
     return result;
@@ -1016,7 +1063,8 @@ Result drawReport(State& state, const Session& session) {
         return static_cast<uint32_t>(static_cast<float>(value) * reveal);
     };
 
-    const Rectangle box = column(780.0f, px(28.0f), screenH() - px(56.0f));
+    const Rectangle box = column(780.0f, px(28.0f),
+                                 screenH() - px(56.0f) - tutorialReserve(session));
     panel(box);
 
     const float cx = box.x + box.width * 0.5f;
@@ -1053,9 +1101,17 @@ Result drawReport(State& state, const Session& session) {
     y += 74.0f;
 
     if (session.canAdvance()) {
-        std::snprintf(line, sizeof(line), "SECTOR %d UNLOCKED   ·   %s",
-                      session.levelIndex() + 2,
-                      ls::levelName(session.levelIndex() + 1));
+        // Name what was actually won. The old line said "sector N+1", which
+        // was true of a campaign that was a queue and is nonsense in one that
+        // branches: holding a sector can open three at once.
+        const int opened = session.sectorsOpenedHere();
+        const int first = session.suggestedNextLevel();
+        if (opened > 1) {
+            std::snprintf(line, sizeof(line), "%d NEW SECTORS OPEN", opened);
+        } else {
+            std::snprintf(line, sizeof(line), "SECTOR %d OPEN   ·   %s",
+                          first + 1, ls::levelName(first));
+        }
         textCentered(line, cx, y, sz(theme::kBody), theme::kGood);
     } else if (p.newBest) {
         std::snprintf(line, sizeof(line), "NEW BEST   ·   was %u",
@@ -1139,49 +1195,43 @@ Result drawReport(State& state, const Session& session) {
     const float footer = box.y + box.height - px(56.0f);
     rule(box.x + px(theme::kGutter), footer - 12.0f,
          box.width - px(theme::kGutter) * 2.0f, 0.7f);
-    // Winning opens the next sector, and the report says so instead of
-    // leaving the player to go looking. RETRY keeps its position either way,
-    // because it is the path the whole game is optimised around (GDD 13.1).
-    const bool advance = session.canAdvance();
-    const int buttons = advance ? 4 : 3;
-    state.report.begin(buttons);
+    // The map is always here, win or lose - it is how you leave a sector you
+    // are stuck on as much as how you claim one you have taken. On a victory
+    // it becomes the primary action: the campaign branches, so the next move
+    // is the player's to make, and a "NEXT SECTOR" button was quietly making
+    // it for them. RETRY keeps its position either way, because it is the
+    // path the whole game is optimised around (GDD 13.1).
+    const bool opened = session.canAdvance();
+    state.report.begin(4);
     navigate(state.report);
 
     Result result;
-    const float bw = (box.width - px(theme::kGutter) * 2.0f) /
-                     static_cast<float>(buttons);
+    const float bw = (box.width - px(theme::kGutter) * 2.0f) / 4.0f;
     const auto at = [&](int i) {
         return Rectangle{box.x + px(theme::kGutter) + bw * static_cast<float>(i),
                          footer, bw, px(40.0f)};
     };
 
-    int item = 0;
-    if (advance) {
-        char label[64];
-        std::snprintf(label, sizeof(label), "N  SECTOR %d",
-                      session.levelIndex() + 2);
+    if (opened) {
         // Drawn as the one thing on the screen with a filled frame.
-        DrawRectangleRec(at(item), theme::withAlpha(theme::kGood, 0.16f));
-        DrawRectangleLinesEx(at(item), 1.5f, theme::kGood);
-        if (button(at(item), label, state.report, item)) {
-            result = {Action::Advance, 0};
-        }
-        ++item;
+        DrawRectangleRec(at(0), theme::withAlpha(theme::kGood, 0.16f));
+        DrawRectangleLinesEx(at(0), 1.5f, theme::kGood);
     }
-    if (button(at(item), "R  RETRY", state.report, item)) {
+    if (button(at(0), "M  SECTOR MAP", state.report, 0)) {
+        result = {Action::ToMap, 0};
+    }
+    if (button(at(1), "R  RETRY", state.report, 1)) {
         result = {Action::Retry, 0};
     }
-    ++item;
-    if (button(at(item), "U  UPGRADE", state.report, item)) {
+    if (button(at(2), "U  UPGRADE", state.report, 2)) {
         result = {Action::OpenTree, 0};
     }
-    ++item;
-    if (button(at(item), "P  PREPARE", state.report, item)) {
+    if (button(at(3), "P  PREPARE", state.report, 3)) {
         result = {Action::BackToPrepare, 0};
     }
 
-    if (advance && (IsKeyPressed(KEY_N) || IsKeyPressed(KEY_ENTER))) {
-        result = {Action::Advance, 0};
+    if (IsKeyPressed(KEY_M) || (opened && IsKeyPressed(KEY_ENTER))) {
+        result = {Action::ToMap, 0};
     }
     if (IsKeyPressed(KEY_R)) result = {Action::Retry, 0};
     if (IsKeyPressed(KEY_U)) result = {Action::OpenTree, 0};
@@ -1196,7 +1246,8 @@ Result drawTree(State& state, const Session& session) {
     state.tree.begin(static_cast<int>(kNodeCount));
     navigate(state.tree);
 
-    const Rectangle box = column(820.0f, 40.0f, screenH() - 110.0f);
+    const Rectangle box = column(820.0f, 40.0f,
+                                 screenH() - 110.0f - tutorialReserve(session));
     panel(box);
 
     char line[128];
@@ -1274,7 +1325,7 @@ Result drawTree(State& state, const Session& session) {
     }
 
     const float footer = box.y + box.height - 34.0f;
-    text("enter buy  ·  X respec (free)  ·  R retry  ·  esc back",
+    text("enter buy  ·  X respec (free)  ·  R retry  ·  M map  ·  esc back",
          box.x + px(theme::kGutter), footer, sz(theme::kMicro), theme::kInkFaint);
     if (state.treeScroll + visible < static_cast<int>(kNodeCount)) {
         textRight("scroll for more", box.x + box.width - px(theme::kGutter),
@@ -1283,8 +1334,53 @@ Result drawTree(State& state, const Session& session) {
 
     if (IsKeyPressed(KEY_X)) result = {Action::Respec, 0};
     if (IsKeyPressed(KEY_R)) result = {Action::Retry, 0};
+    // The map is reachable from here too. Spending Scrap and then choosing
+    // where to spend the build is one thought, and making the player back out
+    // through the report to act on it is a stile in the middle of a path.
+    if (IsKeyPressed(KEY_M)) result = {Action::ToMap, 0};
     if (closeButton(box) || pressedBack()) result = {Action::Back, 0};
     return result;
+}
+
+// -------------------------------------------------------------- tutorial ---
+
+Result drawTutorial(const Session& session) {
+    const Tutorial& tut = session.tutorial();
+    if (!tut.active()) return {};
+
+    // One position for every screen except Prepare, whose bottom bar owns the
+    // strip this would otherwise sit in. Everywhere else the band below the
+    // report and tree panels is empty, and the battle HUD keeps its abilities
+    // bottom-left and its speed control bottom-right.
+    const bool inPrepare = session.phase() == Phase::Prepare;
+    const float h = px(62.0f);
+    const float bottom = inPrepare ? screenH() - px(118.0f) : screenH() - px(10.0f);
+    const Rectangle box = column(720.0f, bottom - h, h);
+
+    DrawRectangleRec(box, theme::withAlpha(Color{16, 22, 30, 255}, 0.96f));
+    DrawRectangleLinesEx(box, 1.0f, theme::withAlpha(theme::kCold, 0.55f));
+    // A bright rule down the left edge, so it reads as a note rather than as
+    // another panel of the interface.
+    DrawRectangleRec(Rectangle{box.x, box.y, px(3.0f), box.height}, theme::kCold);
+
+    const float textX = box.x + px(14.0f);
+    text(tut.headline(), textX, box.y + px(9.0f), sz(theme::kSmall),
+         theme::kCold);
+    text(tut.detail(), textX, box.y + px(31.0f), sz(theme::kMicro),
+         theme::kInkDim);
+
+    // Always dismissable, and it says so. A tutorial you cannot turn off is a
+    // worse first impression than no tutorial at all.
+    const Rectangle skip{box.x + box.width - px(74.0f), box.y + px(8.0f),
+                         px(66.0f), px(20.0f)};
+    const bool over = hovered(skip);
+    textRight("F1  skip", skip.x + skip.width, skip.y + px(3.0f),
+              sz(theme::kMicro), over ? theme::kInk : theme::kInkFaint);
+    if ((over && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) ||
+        IsKeyPressed(KEY_F1)) {
+        return {Action::SkipTutorial, 0};
+    }
+    return {};
 }
 
 }  // namespace ls::ui

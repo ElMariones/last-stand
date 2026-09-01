@@ -48,6 +48,19 @@ Level select draws that graph rather than a list, and it draws it *from* the
 graph — add a sector to `gameplay/Level.cpp` and it appears on the map, wired
 to its parents, laid out by tier.
 
+## The first run
+
+A tutorial that is nine lines of coaching rather than a wall of text: one
+instruction at a time, pinned to the bottom of whatever screen is up, each
+advancing when the player does the thing rather than when they press Next. It
+teaches the loop — place, deploy, lose, spend, retry, win, **choose** — and the
+last step is the one that matters, because a branching campaign is worthless if
+the player never learns the map is a choice.
+
+It never blocks anything, `F1` dismisses it forever, and Options can ask for it
+back without erasing the campaign. It is recorded in a spare bit of the
+settings flag word, so it cost no save version.
+
 ## The bestiary
 
 Seven kinds. A kind that only has more HP than the last one is not a new enemy,
@@ -72,9 +85,16 @@ nothing at all against a Grunt.
 
 ```
 TITLE → MENU → SECTOR MAP → PREPARE → BATTLE → REPORT → UPGRADE TREE
-          ↓                              ↓         ↑         │
-       OPTIONS                         PAUSE       └─────────┘
+          ↓         ↑                    ↓         ↑         │
+       OPTIONS      └──── M, from anywhere ────────┴─────────┘
+                                        PAUSE
 ```
+
+**Every road leads back to the map.** Winning a sector does not hand you the
+next one — it sends you to the map, because in a campaign that branches the
+next move is the player's to make and a "NEXT SECTOR" button was quietly
+making it for them. `M` gets there from the report, the tree and the pause
+menu; Prepare has a button for it beside DEPLOY.
 
 The menu offers CONTINUE and NEW GAME; erasing a save takes two presses
 rather than a dialog box. Options covers volumes, window size, fullscreen,
@@ -97,8 +117,8 @@ selected.
 | right-click | recall a turret into the arsenal |
 | `1` `2` `3` | pick Machine Gun / Cannon / Flamethrower |
 | `F` / `C` | deploy everything in reserve / recall it all |
-| `M` | cycle targeting mode (First → Closest → Strongest → Densest) |
-| `L` | sector map (from Prepare) |
+| `M` | cycle targeting mode, in Prepare (First → Closest → Strongest → Densest) |
+| `M` | sector map — from Prepare, the report, the tree or paused |
 | `SPACE` / `ENTER` | deploy — allowed with turrets still in reserve |
 | `S` | cycle time scale 1× → 2× → 4× |
 | `A` | airstrike the densest lane (if unlocked) |
@@ -106,6 +126,7 @@ selected.
 | `ESC` | pause (battle) · back (menus) |
 | `R` | retry — restart the level with the same loadout |
 | `U` | open the upgrade tree (from the report) |
+| `F1` | dismiss the tutorial |
 | `X` | respec all (tree) |
 | `F` / `G` / `T` | debug: flow-field / grid / range rings |
 

@@ -428,6 +428,20 @@ int main(int argc, char** argv) {
                 break;
         }
 
+        // Drawn last so it sits over whatever screen is up, and only where
+        // it is worth coaching - the title and menus are self-explanatory.
+        {
+            const ls::Phase p = session.phase();
+            const bool coachable =
+                p == ls::Phase::Prepare || p == ls::Phase::Battle ||
+                p == ls::Phase::Report || p == ls::Phase::Tree ||
+                p == ls::Phase::LevelSelect;
+            if (coachable) {
+                const ls::ui::Result t = ls::ui::drawTutorial(session);
+                if (t.action != ls::ui::Action::None) action = t;
+            }
+        }
+
         if (session.settings().debugOverlay && session.world() != nullptr) {
             renderer.drawDebugOverlay(*session.world(),
                                       static_cast<double>(frameSeconds) * 1000.0,
@@ -471,8 +485,12 @@ int main(int argc, char** argv) {
                 else session.goMenu();
                 break;
             case ls::ui::Action::SelectLevel:
-                if (action.value < 0) session.goLevelSelect();
-                else session.selectLevel(action.value);
+                if (action.value < 0) {
+                    session.goLevelSelect();
+                    ui.mapCentred = false;
+                } else {
+                    session.selectLevel(action.value);
+                }
                 break;
             case ls::ui::Action::StartBattle: session.startBattle(); break;
             case ls::ui::Action::SelectKind:
@@ -489,7 +507,14 @@ int main(int argc, char** argv) {
                 ui.dragIndex = -1;
                 break;
             case ls::ui::Action::Retry: session.retry(); break;
-            case ls::ui::Action::Advance: session.advanceLevel(); break;
+            case ls::ui::Action::ToMap:
+                // Reachable from every screen, including mid-battle via the
+                // pause menu. Re-centre the board each time so it opens on
+                // where the player actually is.
+                if (session.phase() == ls::Phase::Pause) session.abandonBattle();
+                session.goLevelSelect();
+                ui.mapCentred = false;
+                break;
             case ls::ui::Action::Restart:
                 session.resume();
                 session.retry();
@@ -514,6 +539,10 @@ int main(int argc, char** argv) {
                 else session.resume();
                 break;
             case ls::ui::Action::Abandon: session.abandonBattle(); break;
+            case ls::ui::Action::SkipTutorial: session.skipTutorial(); break;
+            case ls::ui::Action::RestartTutorial:
+                session.restartTutorial();
+                break;
             case ls::ui::Action::ToMenu: session.goMenu(); break;
         }
 

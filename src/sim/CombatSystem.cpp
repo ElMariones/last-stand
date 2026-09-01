@@ -15,8 +15,8 @@ constexpr float kIgniteTtl = 2.0f;
 // Damages every living enemy within `radius` of `center` with falloff, and
 // pushes them away from `center` by `knockback`. Returns kills.
 uint32_t applySplashAt(EnemyPool& enemies, const SpatialHash& hash,
-                       Vec2 center, float radius, float damage, float knockback,
-                       float armorPierce) {
+                       const LevelMap& map, Vec2 center, float radius,
+                       float damage, float knockback, float armorPierce) {
     uint32_t kills = 0u;
     if (radius <= 0.0f) return kills;
 
@@ -33,7 +33,13 @@ uint32_t applySplashAt(EnemyPool& enemies, const SpatialHash& hash,
         if (applyDamage(enemies, i, damage * falloff, armorPierce)) ++kills;
 
         if (knockback > 0.0f && d > 1e-4f) {
-            enemies.position[i] += normalized(delta) * (knockback * falloff);
+            // Through the walls, not through them. A shell landing beside a
+            // chokepoint used to punt half the queue into the geometry, where
+            // the flow field is zero and they stood until the heat death of
+            // the run.
+            const Vec2 from = enemies.position[i];
+            const Vec2 to = from + normalized(delta) * (knockback * falloff);
+            enemies.position[i] = slideAlongWalls(map, from, to);
         }
     });
     return kills;
@@ -91,12 +97,13 @@ uint32_t fireMachineGun(const Turret& t, EnemyPool& enemies,
 }
 
 uint32_t fireCannon(const Turret& t, EnemyPool& enemies, const SpatialHash& hash,
-                    uint32_t target, std::array<Tracer, kMaxTracers>& tracers,
+                    const LevelMap& map, uint32_t target,
+                    std::array<Tracer, kMaxTracers>& tracers,
                     uint32_t& tracerCount) {
     const Vec2 impact = enemies.position[target];
     appendTracer(tracers, tracerCount, t.position, impact, kTracerTtl);
 
-    uint32_t kills = applySplashAt(enemies, hash, impact, t.splashRadius,
+    uint32_t kills = applySplashAt(enemies, hash, map, impact, t.splashRadius,
                                    t.damage, t.knockback, t.armorPierce);
 
     if (t.clusterShot) {
@@ -104,7 +111,7 @@ uint32_t fireCannon(const Turret& t, EnemyPool& enemies, const SpatialHash& hash
         const float r = t.splashRadius * 0.6f;
         const Vec2 offsets[3] = {Vec2{r, 0.0f}, Vec2{0.0f, r}, Vec2{r, r}};
         for (const Vec2& off : offsets) {
-            kills += applySplashAt(enemies, hash, impact + off, r,
+            kills += applySplashAt(enemies, hash, map, impact + off, r,
                                    t.damage * 0.25f, t.knockback * 0.5f,
                                    t.armorPierce);
         }
@@ -143,8 +150,8 @@ uint32_t fireFlamethrower(const Turret& t, EnemyPool& enemies,
 }  // namespace
 
 void updateCombat(std::vector<Turret>& turrets, EnemyPool& enemies,
-                  const SpatialHash& hash, Vec2 basePos, float dt,
-                  std::array<Tracer, kMaxTracers>& tracers,
+                  const SpatialHash& hash, const LevelMap& map, Vec2 basePos,
+                  float dt, std::array<Tracer, kMaxTracers>& tracers,
                   uint32_t& tracerCount) {
     for (Turret& t : turrets) {
         // Ability timers (Overcharge): 2x fire rate while overcharged, then it
@@ -189,7 +196,8 @@ void updateCombat(std::vector<Turret>& turrets, EnemyPool& enemies,
                 kills = fireMachineGun(t, enemies, hash, target, tracers, tracerCount);
                 break;
             case TurretKind::Cannon:
-                kills = fireCannon(t, enemies, hash, target, tracers, tracerCount);
+                kills = fireCannon(t, enemies, hash, map, target, tracers,
+                                   tracerCount);
                 break;
             case TurretKind::Flamethrower:
                 kills = fireFlamethrower(t, enemies, hash, target);

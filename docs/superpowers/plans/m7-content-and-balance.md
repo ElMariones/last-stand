@@ -115,3 +115,71 @@ was never there.
 The A/B against the previous commit, interleaved three times on copied
 binaries: **0.652 ms base, 0.655 ms with four new enemy kinds.** Armour,
 regeneration, weaving and crowding are free.
+
+---
+
+## Follow-up: the stuck-enemy bug, the tutorial, and the map as hub
+
+### Knockback was putting enemies inside walls
+
+Reported as "after some shots from the cannon, the enemies move and they can
+end up inside walls and unable to move". Exactly right, and it was the same
+class of failure as the movement bug found earlier in this milestone: the flow
+field is zero inside geometry, so anything that ends up in a wall stands there
+for the rest of the battle — alive, which means the victory condition never
+fires.
+
+`applySplashAt` moved enemies without consulting the map. The fix is two
+layers, because one was not enough:
+
+1. **Knockback goes through the map.** `resolveWalls` was hoisted out of
+   `MovementSystem.cpp` into `LevelMap` as `slideAlongWalls`, and `updateCombat`
+   now takes the map so splash can use it. Anything that moves an enemy has to
+   go through one function, or the next feature that moves an enemy
+   reintroduces this.
+2. **An escape heading, as a backstop.** Trusting that nothing can ever put an
+   enemy in a wall is what caused this twice. An enemy with no flow now gets a
+   heading toward the nearest cell the flow field can reach, so being stuck is
+   no longer a state the game can persist in. It only runs for enemies whose
+   flow sample is zero, which in a healthy battle is none of them.
+
+The regression test needed two attempts. The first version passed *without*
+the fix, because the blast landed in front of the crowd and splash pushes
+outward — it scattered them backwards, away from the wall. Reproducing it
+needs the shell on the near end of a queue that is already against geometry.
+With that, 23 of 24 enemies end up embedded without the fix and none with it.
+
+The golden hashes did not move, which is the right answer: this only changes
+behaviour in the case that was broken.
+
+### The tutorial's first step was wrong, and the test caught it
+
+The first draft opened with "place a turret". A sector loads with the player's
+starting turrets already deployed and nothing in the crate, so the step was
+satisfied before it was shown and the tutorial skipped straight past it. The
+step is now about *moving* one — which is the mechanic that actually needs
+teaching, since free placement is the whole tactical layer.
+
+Second fix from the same test: the step machine advanced one step per frame,
+so a player who deployed immediately saw three stale hints flicker past.
+`observe` now re-evaluates until the step settles.
+
+### The map is the hub
+
+The report's primary action after a victory was `N SECTOR n`, which picked the
+next sector for the player. In a campaign that branches that is precisely the
+decision to leave alone, so it is now `M SECTOR MAP`, and the line above it
+names what opened ("3 NEW SECTORS OPEN") rather than an index. `Session::
+advanceLevel` is gone; `sectorsOpenedHere()` replaced it.
+
+The map is now reachable from the report, the tree, the pause menu and a
+button in Prepare — win or lose, because being stuck on a sector is exactly
+when a player needs to go and pick a different one.
+
+### Two layout collisions found by screenshotting at 1280
+
+The SECTOR MAP button added to Prepare overlapped the third turret card at the
+default window size, and the turret cards' stat line ran under their BUY
+button. The right-hand controls are stacked now rather than in a row. Both
+were invisible at 1600 wide, which is the argument for capturing at the size
+players actually get rather than the size that fits the screenshot.

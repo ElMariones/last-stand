@@ -10,6 +10,7 @@ constexpr uint32_t kDamageNumbers = 1u << 1;
 constexpr uint32_t kLod           = 1u << 2;
 constexpr uint32_t kDebugOverlay  = 1u << 3;
 constexpr uint32_t kFullscreen    = 1u << 4;
+constexpr uint32_t kTutorialDone  = 1u << 5;
 
 // The window sizes the options screen offers. Anything else a window manager
 // hands us is kept as-is; this is a convenience list, not a restriction.
@@ -62,6 +63,7 @@ uint32_t packSettingFlags(const Settings& s) {
     if (s.levelOfDetail) bits |= kLod;
     if (s.debugOverlay) bits |= kDebugOverlay;
     if (s.fullscreen) bits |= kFullscreen;
+    if (s.tutorialDone) bits |= kTutorialDone;
     return bits;
 }
 
@@ -71,6 +73,7 @@ void unpackSettingFlags(uint32_t bits, Settings& s) {
     s.levelOfDetail = (bits & kLod) != 0u;
     s.debugOverlay  = (bits & kDebugOverlay) != 0u;
     s.fullscreen    = (bits & kFullscreen) != 0u;
+    s.tutorialDone  = (bits & kTutorialDone) != 0u;
 }
 
 }  // namespace ls

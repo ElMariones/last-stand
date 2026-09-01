@@ -151,7 +151,11 @@ TEST_CASE("perfectly coincident enemies separate deterministically") {
     CHECK(ls::distanceSq(p.position[0], p.position[1]) > 0.01f);
 }
 
-TEST_CASE("an enemy on an unreachable cell does not drift") {
+TEST_CASE("an enemy sealed in a pocket never leaves it") {
+    // Walled in on every side, with no route out at all. It now leans toward
+    // the nearest reachable ground instead of standing perfectly still - the
+    // escape heading cannot tell "sealed" from "briefly stuck" and should not
+    // try - but it must never get anywhere, because there is nowhere to get.
     LevelMap m = makeOpenMap();
     m.walkable[static_cast<size_t>(m.grid.index(1, 0))] = 0u;
     m.walkable[static_cast<size_t>(m.grid.index(0, 1))] = 0u;
@@ -166,10 +170,45 @@ TEST_CASE("an enemy on an unreachable cell does not drift") {
 
     MovementParams params;
     SpatialHash h = makeHash();
-    step(p, m, f, h, params, 10);
+    step(p, m, f, h, params, 240);
 
-    CHECK(p.position[0].x == doctest::Approx(start.x));
-    CHECK(p.position[0].y == doctest::Approx(start.y));
+    int cx = 0;
+    int cy = 0;
+    REQUIRE(m.grid.worldToCell(p.position[0], cx, cy));
+    CHECK(cx == 0);
+    CHECK(cy == 0);
+}
+
+TEST_CASE("an enemy inside a wall walks back out") {
+    // The failure this prevents: the flow field is zero inside geometry, so
+    // an enemy that ends up in a wall has no desired direction, stands there
+    // for the whole battle, and - being alive - stops the victory condition
+    // from ever firing. The run hangs. Cannon knockback used to put enemies
+    // there; this is the backstop for everything that still might.
+    LevelMap m = makeOpenMap();
+    for (int cy = 4; cy <= 8; ++cy) {
+        for (int cx = 4; cx <= 8; ++cx) {
+            m.walkable[static_cast<size_t>(m.grid.index(cx, cy))] = 0u;
+        }
+    }
+
+    FlowField f;
+    f.build(m);
+
+    EnemyPool p;
+    p.spawn(m.grid.cellCenter(6, 6), EnemyType::Grunt);   // dead centre of it
+
+    MovementParams params;
+    SpatialHash h = makeHash();
+    step(p, m, f, h, params, 600);
+
+    int cx = 0;
+    int cy = 0;
+    REQUIRE(m.grid.worldToCell(p.position[0], cx, cy));
+    CAPTURE(cx);
+    CAPTURE(cy);
+    CHECK(m.isWalkable(cx, cy));
+    CHECK(f.isReachable(cx, cy));
 }
 
 TEST_CASE("an empty pool is a no-op") {

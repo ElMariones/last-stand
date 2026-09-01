@@ -115,6 +115,10 @@ Session::Session(const char* savePath)
         arsenal_[0] = kStartingMachineGuns;
     }
     clampSettings(settings_);
+    // A save that has already seen the tutorial starts with it finished. A
+    // fresh one - or an older save, whose spare flag bit reads as zero -
+    // starts at step one, which is exactly right for both.
+    if (settings_.tutorialDone) tutorial_.skip();
     timeScale_ = settings_.defaultTimeScale;
     // The session opens on the title screen, whose background is a live
     // battle: the simulation is fast enough to be a menu backdrop after M5,
@@ -244,6 +248,7 @@ bool Session::placeTurretAt(Vec2 pos) {
     if (available(selectedKind_) == 0u) return false;
     if (!canPlaceAt(pos)) return false;
     loadout_.push_back(makeTurret(selectedKind_, pos, effects_));
+    ++placementsMade_;
     syncWorldTurrets();
     return true;
 }
@@ -253,6 +258,7 @@ bool Session::moveTurret(int index, Vec2 pos) {
     if (index < 0 || index >= static_cast<int>(loadout_.size())) return false;
     if (!canPlaceAt(pos, index)) return false;
     loadout_[static_cast<size_t>(index)].position = pos;
+    ++placementsMade_;
     syncWorldTurrets();
     return true;
 }
@@ -329,9 +335,29 @@ bool Session::canAdvance() const {
            suggestedNextLevel() != levelIndex_;
 }
 
-void Session::advanceLevel() {
-    if (!canAdvance()) return;
-    selectLevel(suggestedNextLevel());
+int Session::sectorsOpenedHere() const {
+    int opened = 0;
+    for (int i = 0; i < kLevelCount; ++i) {
+        if (clearCountFor(i) > 0u || !isLevelUnlocked(i)) continue;
+        int parents[kMaxParents];
+        const int n = levelParents(i, parents);
+        for (int p = 0; p < n; ++p) {
+            if (parents[p] == levelIndex_) { ++opened; break; }
+        }
+    }
+    return opened;
+}
+
+void Session::skipTutorial() {
+    tutorial_.skip();
+    settings_.tutorialDone = true;
+    saveNow();
+}
+
+void Session::restartTutorial() {
+    tutorial_.restart();
+    settings_.tutorialDone = false;
+    saveNow();
 }
 
 void Session::grantScrap(uint32_t amount) { scrap_ += amount; }
@@ -660,6 +686,16 @@ void Session::resetPresentation() {
 }
 
 void Session::updatePresentation(float frameSeconds) {
+    // The tutorial only ever watches. It never touches the simulation and it
+    // never blocks anything - a player who ignores it entirely plays a normal
+    // game, which is the only kind of tutorial worth having.
+    if (tutorial_.active()) {
+        tutorial_.observe(*this, frameSeconds);
+        if (!tutorial_.active()) {
+            settings_.tutorialDone = true;
+            saveNow();
+        }
+    }
     juice_.update(frameSeconds);
     particles_.update(frameSeconds);
     corpses_.update(frameSeconds);

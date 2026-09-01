@@ -18,6 +18,26 @@ Vec2 LevelMap::baseCenter() const {
     return grid.cellCenterAt(baseCell);
 }
 
+Vec2 slideAlongWalls(const LevelMap& map, Vec2 from, Vec2 to) {
+    int cx = 0;
+    int cy = 0;
+    if (!map.grid.worldToCell(from, cx, cy) || !map.isWalkable(cx, cy)) {
+        return to;
+    }
+    const auto open = [&](Vec2 p) {
+        int tx = 0;
+        int ty = 0;
+        return map.grid.worldToCell(p, tx, ty) && map.isWalkable(tx, ty);
+    };
+    if (open(to)) return to;
+
+    const Vec2 alongX{to.x, from.y};
+    if (open(alongX)) return alongX;
+    const Vec2 alongY{from.x, to.y};
+    if (open(alongY)) return alongY;
+    return from;
+}
+
 namespace {
 
 // A tiny authoring vocabulary. Eight maps written by hand need it; without it

@@ -17,6 +17,11 @@ constexpr int kHalfNeighbours[4][2] = {{1, 0}, {-1, 1}, {0, 1}, {1, 1}};
 constexpr float kWeaveRadiansPerSecond = 10.0f;
 constexpr float kTwoPi = 6.28318530717958647692f;
 
+// How far to look for a way out of geometry. A wall thicker than this in
+// every direction is a sealed pocket, which is an authoring error the level
+// tests already catch.
+constexpr int kMaxEscapeRings = 12;
+
 // The separation force neighbour j (at jPos) exerts on enemy i (at iPos).
 // Antisymmetric by construction — f(i,j) == -f(j,i) — which is what lets the
 // pair walk compute each interaction once and apply it to both enemies.
@@ -125,28 +130,44 @@ void accumulateQueries(const EnemyPool& pool, const SpatialHash& hash,
     }
 }
 
-// Slides along a wall rather than stopping dead against it: try the whole
-// move, then each axis alone. An enemy already inside geometry (spawned there,
-// or shoved there before this existed) is allowed to move freely so it can get
-// out, rather than being sealed in.
-inline Vec2 resolveWalls(const LevelMap& map, Vec2 from, Vec2 to) {
+// Nowhere to go. The flow field is zero inside geometry, so an enemy that has
+// ended up in a wall - shoved there by a cannon before knockback respected
+// walls, or spawned there by an authoring mistake - has no desired direction
+// at all. It then stands still for the rest of the battle: alive, so the
+// victory condition never fires and the run hangs forever.
+//
+// Rather than trust that nothing can ever put an enemy in a wall, anything
+// with no flow is handed a heading toward the nearest cell the flow field can
+// actually reach. Walking out is always possible, so being stuck never is.
+//
+// Only runs for enemies whose flow sample is zero, which in a healthy battle
+// is none of them.
+Vec2 escapeHeading(const LevelMap& map, const FlowField& field, Vec2 from) {
     int cx = 0;
     int cy = 0;
-    if (!map.grid.worldToCell(from, cx, cy) || !map.isWalkable(cx, cy)) {
-        return to;
-    }
-    const auto open = [&](Vec2 p) {
-        int tx = 0;
-        int ty = 0;
-        return map.grid.worldToCell(p, tx, ty) && map.isWalkable(tx, ty);
-    };
-    if (open(to)) return to;
+    if (!map.grid.worldToCell(from, cx, cy)) return Vec2{0.0f, 0.0f};
 
-    const Vec2 alongX{to.x, from.y};
-    if (open(alongX)) return alongX;
-    const Vec2 alongY{from.x, to.y};
-    if (open(alongY)) return alongY;
-    return from;
+    // Widening square rings, scanned in a fixed order so the choice is
+    // deterministic when two cells are equally close.
+    for (int r = 1; r <= kMaxEscapeRings; ++r) {
+        for (int dy = -r; dy <= r; ++dy) {
+            for (int dx = -r; dx <= r; ++dx) {
+                // Perimeter of this ring only; the inside was already scanned.
+                if (dx > -r && dx < r && dy > -r && dy < r) continue;
+                const int tx = cx + dx;
+                const int ty = cy + dy;
+                if (!map.grid.inBounds(tx, ty)) continue;
+                if (!map.isWalkable(tx, ty)) continue;
+                if (!field.isReachable(tx, ty)) continue;
+
+                const Vec2 to = map.grid.cellCenter(tx, ty);
+                const Vec2 delta = to - from;
+                if (lengthSq(delta) <= 1e-6f) continue;
+                return normalized(delta);
+            }
+        }
+    }
+    return Vec2{0.0f, 0.0f};
 }
 
 }  // namespace
@@ -193,7 +214,8 @@ void updateMovement(EnemyPool& pool,
         const Vec2 self = pool.prevPosition[i];
         const EnemyStats& s = stats[pool.type[i]];
 
-        const Vec2 flow = field.sample(self);
+        Vec2 flow = field.sample(self);
+        if (lengthSq(flow) <= 0.0f) flow = escapeHeading(map, field, self);
         Vec2 desired = flow * pool.speed[i];
 
         // Weaving kinds slide sideways across their own path. The oscillation
@@ -216,7 +238,7 @@ void updateMovement(EnemyPool& pool,
         const Vec2 velocity =
             desired + pushScratch[i] * (params.separationStrength * s.crowding);
         pool.velocity[i] = velocity;
-        pool.position[i] = resolveWalls(map, self, self + velocity * dt);
+        pool.position[i] = slideAlongWalls(map, self, self + velocity * dt);
     }
 }
 

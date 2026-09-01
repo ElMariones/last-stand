@@ -130,7 +130,7 @@ void World::tick(float dt) {
         --tracerCount_;
     }
 
-    updateCombat(turrets_, enemies_, hash_, base_.position, dt, tracers_,
+    updateCombat(turrets_, enemies_, hash_, map_, base_.position, dt, tracers_,
                  tracerCount_);
 
     bool anyIgnite = false;

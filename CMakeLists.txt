@@ -87,6 +87,7 @@ add_library(laststand_core STATIC
     src/fx/Particles.cpp
     src/fx/Corpses.cpp
     src/fx/DamageNumbers.cpp
+    src/app/Tutorial.cpp
     src/render/Renderer.cpp
     src/render/Viewport.cpp
     src/render/Icons.cpp
@@ -139,6 +140,7 @@ add_executable(laststand_tests
     tests/test_fx.cpp
     tests/test_audio.cpp
     tests/test_telemetry.cpp
+    tests/test_tutorial.cpp
     tests/test_balance.cpp
     tests/test_viewport.cpp
     tests/test_golden.cpp

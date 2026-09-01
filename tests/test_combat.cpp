@@ -12,6 +12,15 @@ using ls::Tracer;
 using ls::Turret;
 using ls::Vec2;
 
+namespace {
+// Open Ground has no walls at all, which is what these tests want: they are
+// about targeting and damage, and the wall interaction has its own tests.
+const ls::LevelMap& openMap() {
+    static const ls::LevelMap map = ls::makeOpenGroundMap();
+    return map;
+}
+}  // namespace
+
 TEST_CASE("applyDamage reduces health and clamps at zero") {
     EnemyPool e;
     e.spawn(Vec2{0.0f, 0.0f}, EnemyType::Grunt);
@@ -51,7 +60,7 @@ TEST_CASE("a turret fires at an enemy in range and kills it") {
     std::array<Tracer, ls::kMaxTracers> tracers;
     uint32_t tc = 0u;
 
-    ls::updateCombat(t, e, h, Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
+    ls::updateCombat(t, e, h, openMap(), Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
 
     CHECK(t[0].shotsFired == 1u);
     CHECK(t[0].kills == 1u);
@@ -81,7 +90,7 @@ TEST_CASE("a turret respects its fire interval") {
 
     // 60 ticks = 1 second -> expect ~8 shots (within tiny drift tolerance).
     for (int i = 0; i < 60; ++i) {
-        ls::updateCombat(t, e, h, Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
+        ls::updateCombat(t, e, h, openMap(), Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
     }
 
     CHECK(t[0].shotsFired == 8u);
@@ -102,7 +111,7 @@ TEST_CASE("a turret with no enemies in range never fires") {
     uint32_t tc = 0u;
 
     for (int i = 0; i < 60; ++i) {
-        ls::updateCombat(t, e, h, Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
+        ls::updateCombat(t, e, h, openMap(), Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
     }
     CHECK(t[0].shotsFired == 0u);
     CHECK(e.health[0] == doctest::Approx(100.0f));
@@ -129,7 +138,7 @@ TEST_CASE("cannon damages a cluster in its splash, not enemies outside it") {
 
     std::array<Tracer, ls::kMaxTracers> tracers;
     uint32_t tc = 0u;
-    ls::updateCombat(t, e, h, Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
+    ls::updateCombat(t, e, h, openMap(), Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
 
     CHECK(e.health[0] < 100.0f);   // cluster damaged
     CHECK(e.health[1] < 100.0f);
@@ -157,7 +166,7 @@ TEST_CASE("cannon knockback pushes a near enemy away from the impact") {
     std::array<Tracer, ls::kMaxTracers> tracers;
     uint32_t tc = 0u;
     const float before = e.position[1].x;
-    ls::updateCombat(t, e, h, Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
+    ls::updateCombat(t, e, h, openMap(), Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
 
     CHECK(e.position[1].x > before);   // pushed in +x, away from impact at 50
 }
@@ -180,7 +189,7 @@ TEST_CASE("flamethrower applies Burn, which damages over subsequent ticks") {
 
     std::array<Tracer, ls::kMaxTracers> tracers;
     uint32_t tc = 0u;
-    ls::updateCombat(t, e, h, Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
+    ls::updateCombat(t, e, h, openMap(), Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
 
     CHECK(e.burnDps[0] == doctest::Approx(6.0f));
     CHECK(e.burnTtl[0] == doctest::Approx(3.0f));
@@ -212,7 +221,7 @@ TEST_CASE("flamethrower does not burn enemies outside its cone") {
 
     std::array<Tracer, ls::kMaxTracers> tracers;
     uint32_t tc = 0u;
-    ls::updateCombat(t, e, h, Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
+    ls::updateCombat(t, e, h, openMap(), Vec2{500.0f, 0.0f}, 1.0f / 60.0f, tracers, tc);
 
     CHECK(e.burnTtl[0] > 0.0f);   // burned
     CHECK(e.burnTtl[1] == doctest::Approx(0.0f));   // outside cone, not burned
@@ -237,4 +246,63 @@ TEST_CASE("a World behaves identically with no turrets (M1 regression)") {
     for (int i = 0; i < 5000 && !w.isOver(); ++i) w.tick(1.0f / 60.0f);
     CHECK(w.isOver());
     CHECK(w.totalKills() == 0u);   // nothing was shot, everything leaked
+}
+
+
+TEST_CASE("cannon knockback never leaves anyone inside a wall") {
+    // The reported bug: after a few shells, enemies were embedded in the
+    // geometry and stopped moving. Knockback moved them without asking the
+    // map, and the flow field is zero inside a wall - so whoever landed there
+    // stood still, stayed alive, and kept the battle from ever ending.
+    //
+    // The blast has to land BEHIND the crowd for this to reproduce: splash
+    // pushes outward from the impact, so a shell in front of a queue merely
+    // scatters it backwards. A shell on the near end of a queue that is
+    // already up against a wall drives the whole thing into it.
+    ls::LevelMap map = ls::makeOpenGroundMap();
+    for (int cy = 0; cy < map.grid.rows(); ++cy) {
+        for (int cx = 20; cx <= 24; ++cx) {      // wall spans x 400..500
+            map.walkable[static_cast<size_t>(map.grid.index(cx, cy))] = 0u;
+        }
+    }
+
+    EnemyPool e;
+    for (int i = 0; i < 24; ++i) {
+        e.spawn(Vec2{340.0f + static_cast<float>(i) * 2.4f,
+                     296.0f + static_cast<float>(i % 4) * 3.0f},
+                EnemyType::Grunt);
+    }
+    for (uint32_t i = 0; i < e.count(); ++i) e.health[i] = 1000000.0f;
+
+    SpatialHash h{map.grid.worldWidth(), map.grid.worldHeight(), 12.0f, 4096u};
+
+    std::vector<Turret> t(1);
+    t[0].position = Vec2{150.0f, 300.0f};
+    t[0].kind = ls::TurretKind::Cannon;
+    t[0].mode = ls::TargetingMode::Closest;   // blast lands on the near end
+    t[0].damage = 0.5f;
+    t[0].fireInterval = 0.05f;
+    t[0].range = 400.0f;
+    t[0].splashRadius = 120.0f;
+    t[0].knockback = 40.0f;
+
+    std::array<Tracer, ls::kMaxTracers> tracers;
+    uint32_t tc = 0u;
+
+    for (int shot = 0; shot < 300; ++shot) {
+        h.build(e.position, e.count());
+        ls::updateCombat(t, e, h, map, Vec2{1200.0f, 300.0f}, 1.0f / 60.0f,
+                         tracers, tc);
+    }
+    REQUIRE(t[0].shotsFired > 20u);
+
+    for (uint32_t i = 0; i < e.count(); ++i) {
+        int cx = 0;
+        int cy = 0;
+        REQUIRE(map.grid.worldToCell(e.position[i], cx, cy));
+        CAPTURE(i);
+        CAPTURE(cx);
+        CAPTURE(cy);
+        CHECK(map.isWalkable(cx, cy));
+    }
 }

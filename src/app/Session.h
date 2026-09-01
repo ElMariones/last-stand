@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "app/Tutorial.h"
 #include "fx/Corpses.h"
 #include "fx/DamageNumbers.h"
 #include "fx/Juice.h"
@@ -97,10 +98,14 @@ public:
     // just opened if there is one, otherwise the shallowest one still
     // standing. Returns the current level when there is nowhere new to go.
     int  suggestedNextLevel() const;
-    // True when the battle just won opens something new — the report turns
-    // that into its primary action rather than leaving the player to find it.
+    // True when the battle just won opened something new. The report turns
+    // that into its primary action — which is a trip to the sector map, not a
+    // jump to one particular sector: the whole point of a branching campaign
+    // is that the player picks, and a "NEXT" button quietly picks for them.
     bool canAdvance() const;
-    void advanceLevel();
+    // How many sectors this victory opened, so the report can say what was
+    // actually won rather than naming the next index up.
+    int  sectorsOpenedHere() const;
 
     // --- harness hooks -----------------------------------------------------
     // Used only by the offline tools - the balance harness, which drops a
@@ -193,6 +198,22 @@ public:
     // nobody wants their volume reset because they restarted the campaign.
     void newGame();
 
+    // How many turrets the player has deliberately put down or dragged this
+    // session. The tutorial watches it, because "you decide where these go"
+    // is the one thing a new player has to be shown rather than told - and
+    // the alternative, watching the turret count, is already non-zero the
+    // moment a sector loads.
+    uint32_t placementsMade() const { return placementsMade_; }
+
+    // --- the first run -----------------------------------------------------
+    const Tutorial& tutorial() const { return tutorial_; }
+    // Dismissed by the player, or finished on its own. Either way it is
+    // recorded in the save so it never appears again unaided.
+    void skipTutorial();
+    // Available from Options, because a player who skipped it on a whim
+    // should not have to erase their campaign to get it back.
+    void restartTutorial();
+
     // --- presentation ------------------------------------------------------
     // Advances everything that runs at frame rate rather than tick rate.
     void updatePresentation(float frameSeconds);
@@ -259,6 +280,8 @@ private:
     BattleTelemetry telemetry_;
     FailureAnalysis failure_;
 
+    uint32_t      placementsMade_ = 0u;
+    Tutorial      tutorial_;
     ParticlePool  particles_;
     CorpseRing    corpses_;
     DamageNumbers numbers_;
