@@ -9,8 +9,8 @@ single core before reaching for a thread pool.
 
 ![The title screen](docs/img/title.png)
 
-The title screen's background is a live battle, dimmed. The simulation is fast
-enough to be a menu backdrop, so it is one.
+The title screen's background is the simulation itself, running live and
+dimmed behind the menu.
 
 ---
 
@@ -171,19 +171,17 @@ produces the emergent behaviour the design wants for free: the horde compresses
 at chokepoints, streams along walls and piles up behind obstacles, with no
 authored crowd logic anywhere.
 
-### Two rules that exist because their absence hung the game
+### Two guarantees the movement system enforces
 
-**Everything that moves an enemy must resolve against walls.** The flow field
-is zero *inside* geometry, so anything that ends up in a wall stands there for
-the rest of the battle — alive, which means the victory condition never fires
-and the run hangs forever. Separation shoves people into walls in a dense
-chokepoint. So did cannon knockback. Both now go through one function,
-`slideAlongWalls`.
+**Everything that moves an enemy resolves against walls.** The flow field is
+zero *inside* geometry, so anything that ends up in a wall would stand there
+for the rest of the battle. Separation and cannon knockback both push agents
+through a single function, `slideAlongWalls`, so neither can place one inside
+geometry.
 
-**And, as a backstop, being stuck is not a state the game can persist in.** An
-enemy with no flow at all is handed a heading toward the nearest reachable
-cell. Trusting that nothing can ever put an enemy in a wall is what caused this
-twice.
+**And no enemy can be left without a direction.** One with no flow at all is
+handed a heading toward the nearest reachable cell, so the simulation always
+has somewhere to send it.
 
 ### The spatial hash
 
@@ -199,8 +197,8 @@ with a radius of 160. Measured at 5,000 entities: 64 → 1.90 ms, 32 → 1.55,
 array quadruples.
 
 Queries are callback-based (`forEachInRadius`) rather than returning a shared
-buffer. The buffer version had a real bug in it: DENSEST targeting nests a
-query inside a query, and the inner one clobbered the outer one's results.
+buffer, because DENSEST targeting nests a query inside a query — a shared
+buffer would have the inner query overwrite the outer one's results.
 
 ### Deterministic fixed timestep
 
@@ -236,24 +234,17 @@ reproducible rather than a claim in an old commit message.
 ### The stages that did not pay
 
 Packing positions into the hash's cell order changed nothing measurable
-(1.2321 → 1.2280 ms) — a 40 KB position array already lives in L2. Later,
-denormalising two per-kind constants into per-entity arrays to shorten an
-indexed load also measured as nothing. Both are documented in
-[`docs/superpowers/plans/`](docs/superpowers/plans/) alongside the ones that
-worked, because an optimisation notebook that only records the wins is a
-sales brochure.
+(1.2321 → 1.2280 ms) — a 40 KB position array already lives in L2.
+Denormalising two per-kind constants into per-entity arrays to shorten an
+indexed load also measured as nothing. Both are kept in the sweep tooling
+alongside the changes that did pay off, because an optimisation record that
+only keeps the wins isn't a useful one.
 
-### The measurement trap, which cost an afternoon
+### A note on measuring
 
-**Copy the binary before you benchmark it.** On macOS the executable the linker
-just wrote is scanned on every exec; a byte-identical copy is not.
-`build/laststand` measured **0.93 ms** against `build/laststand-copy` at
-**0.66 ms** — same directory, same ad-hoc signature, same md5.
-
-This produced a convincing 35% "regression" that survived reverting the
-suspect code, a clean rebuild, and finally grafting the entire new `src/` onto
-the previous commit's build directory, where it ran at baseline speed. The
-check that ends this argument is A/B-ing two binaries with the same md5.
+On macOS, the executable the linker just wrote is scanned on first exec; a
+byte-identical copy of it is not. `docs/bench/` numbers are always taken from
+a copied binary, so consecutive runs stay comparable.
 
 ---
 
@@ -340,23 +331,20 @@ is asserted in `tests/test_level.cpp`, not merely intended.
 
 ### Difficulty is composition, not multiplication
 
-The original design said enemy *count* was the primary difficulty knob. That
-turned out to be measurably wrong, and the campaign it produced was the
-evidence: totals climbed an order of magnitude across eight sectors and every
-sector after the third fell first try.
+Enemy *count* is not the primary difficulty knob: more enemies means more
+kills, and therefore more income, at roughly the same rate it means more
+threat. The two curves cancel, and scaling by count alone just makes a battle
+longer, not harder. Health multipliers stay small (1.0 to 4.5 across the whole
+campaign) and do the fine tuning; the roster — which enemies appear together,
+and what each one demands of a build — does the work.
 
-Count scales the player's kill count, and therefore their income, at least as
-fast as it scales the threat. The two curves cancel and what is left is a
-longer battle, not a harder one. Health multipliers stay small (1.0 to 4.5
-across the whole campaign) and do the fine tuning; the roster does the work.
-
-### The economy, and the bug in it
+### The economy
 
 ![Upgrade tree](docs/img/tree.png)
 
 24 nodes: eight repeatable stat nodes and sixteen one-shot behaviour and unlock
-nodes. Costs grow 1.42× per level; the strong multipliers grow more slowly than
-they used to.
+nodes. Costs grow 1.42× per level, with the strongest multipliers scaled to
+grow slower than the rest of the tree.
 
 ```
 scrap = (kills × killValue × scrapMult)
@@ -366,11 +354,12 @@ scrap = (kills × killValue × scrapMult)
 ```
 
 `killValue` **falls with the sector's tier**, from 4.00 in the first to 0.85 in
-the last. This is the fix for a specific measured failure. A flat kill value
-makes income *linear* in enemy count while the upgrade tree makes damage
-*exponential* in Scrap. Those curves cross, and after they cross the game funds
-itself: every purchase is affordable the moment it is wanted, the player is
-never broke, and the remaining sectors are a formality.
+the last, because a flat kill value would make income *linear* in enemy count
+while the upgrade tree makes damage *exponential* in Scrap. Left uncorrected,
+those curves cross, and past the crossing point the game funds itself: every
+purchase is affordable the moment it is wanted, the player is never broke, and
+the remaining sectors are a formality. Sloping `killValue` down keeps the
+crossing from happening within the campaign's length.
 
 ### Two instruments, because the curve is measured rather than asserted
 
@@ -423,11 +412,11 @@ thousand bodies on screen colour alone is a smear: Swarmers are legless darts,
 Brutes are slabs under pauldrons, Phantoms stream with a wake and no legs at
 all, Behemoths are three segments on four counter-phased legs.
 
-One bug worth naming, because it cost an afternoon twice: **backface culling
-silently eats a triangle wound the wrong way.** No warning, no error — the
-detail simply is not there. The natural way to read points off a sketch is
-whichever way you drew it. `emit()` now normalises winding itself with one
-cross product per triangle, so the class of bug is gone rather than fixed.
+Backface culling drops any triangle wound the wrong way, silently — no
+warning, just a missing sliver of detail. Rather than requiring every call
+site to hand-order its points correctly, `emit()` normalises winding itself
+with one cross product per triangle, so shapes can be authored in whatever
+order reads naturally on a sketch.
 
 ### Density-driven level of detail
 
@@ -611,7 +600,7 @@ Scrap, the 24-node tree, per-sector bests and your options persist to
 ./build/laststand --bench --ticks 10000 --spawn 5000
 
 # The whole entity-count curve to a CSV.
-cp build/laststand /tmp/measure                 # see "the measurement trap"
+cp build/laststand /tmp/measure                 # see "a note on measuring"
 /tmp/measure --sweep docs/bench/m7.csv --stage stage5
 
 # The M5 baseline, for reproducing the optimisation numbers.
