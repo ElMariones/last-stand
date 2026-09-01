@@ -17,7 +17,7 @@ float row() { return px(kRowBase); }
 
 // Shown on the title screen. A build a tester can name is a build you can get
 // a useful bug report about.
-constexpr const char* kVersion = "vertical slice · build 6";
+constexpr const char* kVersion = "vertical slice  ·  18 sectors  ·  7 kinds";
 
 const char* const kNodeNames[kNodeCount] = {
     "Damage",         "Fire Rate",      "Range",           "Base HP",
@@ -821,7 +821,9 @@ Result drawPrepareHud(State& state, const Session& session,
             text(k.stat, textX, r.y + px(40.0f), sz(theme::kMicro),
                  theme::kInkFaint);
         } else {
-            text("LOCKED - unlock it in the tree", textX, r.y + px(26.0f),
+            // Short enough to stay inside the card at the narrowest window
+            // the game supports; the longer version ran into its neighbour.
+            text("LOCKED - see the tree", textX, r.y + px(26.0f),
                  sz(theme::kMicro), theme::kInkFaint);
         }
 
@@ -866,7 +868,7 @@ Result drawPrepareHud(State& state, const Session& session,
     DrawRectangleLinesEx(toMap, 1.0f,
                          mapHot ? theme::kCold
                                 : theme::withAlpha(theme::kColdDim, 0.9f));
-    textCentered("L   SECTOR MAP", toMap.x + toMap.width * 0.5f,
+    textCentered("M   SECTOR MAP", toMap.x + toMap.width * 0.5f,
                  toMap.y + toMap.height * 0.5f -
                      static_cast<float>(sz(theme::kMicro)) * 0.5f,
                  sz(theme::kMicro), mapHot ? theme::kInk : theme::kInkDim);
@@ -875,7 +877,7 @@ Result drawPrepareHud(State& state, const Session& session,
     }
 
     // One hint line, under the cards, ending well clear of the controls.
-    text("drag to move  ·  F auto-deploy  ·  C recall all  ·  M targeting  ·  esc menu",
+    text("drag to move  ·  F auto-deploy  ·  C recall all  ·  Q targeting  ·  esc menu",
          screenW() * 0.26f, bar.y + px(78.0f), sz(theme::kMicro),
          theme::kInkFaint);
 
@@ -886,9 +888,14 @@ Result drawPrepareHud(State& state, const Session& session,
     if (IsKeyPressed(KEY_THREE)) return {Action::SelectKind, 2};
     if (IsKeyPressed(KEY_F)) return {Action::FillHardpoints, 0};   // auto-deploy
     if (IsKeyPressed(KEY_C)) return {Action::ClearHardpoints, 0};
-    if (IsKeyPressed(KEY_L)) return {Action::ToMap, 0};
+    if (IsKeyPressed(KEY_L) || IsKeyPressed(KEY_M)) {
+        return {Action::ToMap, 0};
+    }
     if (pressedBack()) return {Action::ToMenu, 0};
-    if (IsKeyPressed(KEY_M)) return {Action::CycleTargeting, 0};
+    // Targeting moved off M when M became the sector map on every other
+    // screen. One key meaning two things depending on where you are is the
+    // kind of wart that only the person who wrote it can navigate.
+    if (IsKeyPressed(KEY_Q)) return {Action::CycleTargeting, 0};
     if (IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER)) {
         return {Action::StartBattle, 0};
     }
@@ -1256,8 +1263,11 @@ Result drawTree(State& state, const Session& session) {
          theme::kScrap);
     text("SCRAP", box.x + px(theme::kGutter), box.y + 58.0f, sz(theme::kMicro),
          theme::kInkFaint);
-    textRight("UPGRADES", box.x + box.width - px(theme::kGutter), box.y + 26.0f,
-              sz(theme::kHeading), theme::kInkDim);
+    // Clear of the close button in the same corner, which the heading was
+    // otherwise drawn straight through.
+    const float headerRight = box.x + box.width - px(theme::kGutter + 30.0f);
+    textRight("UPGRADES", headerRight, box.y + 26.0f, sz(theme::kHeading),
+              theme::kInkDim);
     std::snprintf(line, sizeof(line), "%u invested",
                   session.tree().totalSpent());
     textRight(line, box.x + box.width - px(theme::kGutter), box.y + 58.0f,

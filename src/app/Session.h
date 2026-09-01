@@ -176,6 +176,13 @@ public:
     void fireAirstrike();
     void overchargeAt(Vec2 worldPos);
 
+    // The title screen's backdrop is a live battle, dimmed - the simulation
+    // is fast enough to be a menu background, so it is one. This advances the
+    // world with none of a real battle's bookkeeping: no telemetry, no
+    // payout, no transitions, no fx, and it tops the horde up when it thins
+    // so the backdrop never runs dry. Title phase only.
+    void tickBackdrop(float dt);
+
     void startBattle();            // Prepare -> Battle
     void updateBattle(float dt);   // ticks battle; transitions to Report when over
     void retry();                  // Report/Tree -> fresh battle, immediately running

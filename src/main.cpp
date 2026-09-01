@@ -25,10 +25,14 @@ const char* kSavePath = "laststand.save";
 
 // Drives the session to whatever screen a capture wants, so a screenshot of
 // the upgrade tree does not depend on someone pressing keys fast enough.
-void setUpShot(ls::Session& session, const char* screen, int level) {
+void setUpShot(ls::Session& session, const char* screen, int level,
+               bool keepTutorial) {
     const auto is = [&](const char* name) {
         return std::strcmp(screen, name) == 0;
     };
+    // A capture session has no save, so the tutorial is always on step one.
+    // Screenshots should show the game unless the coaching is the subject.
+    if (!keepTutorial) session.skipTutorial();
     if (is("title")) return;
 
     session.goMenu();
@@ -252,7 +256,10 @@ int main(int argc, char** argv) {
     uint64_t shotFrames = 0u;
 
     const bool shotMode = options.shotTicks > 0u;
-    if (shotMode) setUpShot(session, options.shotScreen, options.shotLevel);
+    if (shotMode) {
+        setUpShot(session, options.shotScreen, options.shotLevel,
+                  options.shotTutorial);
+    }
 
     while (!WindowShouldClose() && !quitRequested) {
         const float frameSeconds =
@@ -327,6 +334,18 @@ int main(int argc, char** argv) {
         // --- simulation -----------------------------------------------------
         // Hitstop withholds ticks rather than scaling dt, so the fixed
         // timestep — and therefore determinism — is untouched by juice.
+        // The title screen runs its own backdrop off the same fixed
+        // timestep, so the claim that the menu background is a live battle is
+        // actually true.
+        if (phase == ls::Phase::Title) {
+            const double advance = shotMode ? timestep.tickSeconds()
+                                            : static_cast<double>(frameSeconds);
+            const int ticks = timestep.advance(advance);
+            for (int i = 0; i < ticks; ++i) {
+                session.tickBackdrop(static_cast<float>(timestep.tickSeconds()));
+            }
+        }
+
         if (inBattle && !session.frozen()) {
             if (prevPhase != ls::Phase::Battle) timestep.reset();
             const double scale = static_cast<double>(session.timeScale());

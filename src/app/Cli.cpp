@@ -43,6 +43,8 @@ Options parseArgs(int argc, const char* const* argv) {
         } else if (std::strcmp(a, "--shot-level") == 0) {
             uint64_t v = 0;
             if (takeValue(argc, argv, i, v)) o.shotLevel = static_cast<int>(v);
+        } else if (std::strcmp(a, "--shot-tutorial") == 0) {
+            o.shotTutorial = true;
         } else if (std::strcmp(a, "--matrix") == 0) {
             o.matrix = true;
         } else if (std::strcmp(a, "--balance-level") == 0) {
@@ -111,6 +113,7 @@ const char* usageText() {
         "  --balance-level <n> level index for --balance (default 0)\n"
         "  --matrix            play every sector at several Scrap budgets\n"
         "  --shot-level <n>    sector index for a battle/report capture\n"
+        "  --shot-tutorial     keep the tutorial visible in a capture\n"
         "  --render-bench <n>  open a window, draw n enemies, time the frames\n"
         "  --no-lod            draw every enemy at the lowest detail tier\n"
         "  --no-batch          one raylib draw call per enemy (the M4 path)\n"

@@ -604,6 +604,19 @@ void Session::overchargeAt(Vec2 worldPos) {
                          ParticleKind::Ember, 120.0f, 0.5f, fxRng_);
 }
 
+void Session::tickBackdrop(float dt) {
+    if (phase_ != Phase::Title || world_ == nullptr) return;
+
+    // Kept busy rather than played out. A real invasion would be spent in
+    // under a minute and leave the title screen staring at an empty field,
+    // which is the opposite of the point.
+    constexpr uint32_t kBackdropTarget = 260u;
+    if (world_->enemies().count() < kBackdropTarget) {
+        world_->spawnWave(24u, EnemyType::Grunt);
+    }
+    world_->tick(dt);
+}
+
 void Session::updateBattle(float dt) {
     if (phase_ != Phase::Battle) return;
     if (airstrikeCd_ > 0.0f) airstrikeCd_ -= dt;

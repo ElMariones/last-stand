@@ -46,6 +46,10 @@ struct Options {
     // later sectors are the only place the newer enemy kinds appear, so
     // reviewing their art needs a way to ask for one.
     int      shotLevel    = 0;
+    // The tutorial is on for any session with no save, which is every capture
+    // session. Off by default here so screenshots show the game rather than
+    // the coaching, and on demand when the coaching IS the subject.
+    bool     shotTutorial = false;
 
     // >0: open a window, spawn this many enemies and time `renderTicks`
     // frames of the render path. The LOD numbers come from here.

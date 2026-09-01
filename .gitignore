@@ -7,3 +7,5 @@ compile_commands.json
 # Runtime artifacts
 laststand.save
 *.png
+# ...except the ones the README points at.
+!docs/img/*.png
